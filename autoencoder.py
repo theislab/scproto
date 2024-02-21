@@ -8,45 +8,69 @@ from tqdm.auto import tqdm
 from pathlib import Path
 
 import time
+import torch.nn.functional as F
+from sklearn.model_selection import train_test_split
 
 
-# Defining Autoencoder model
-class Autoencoder(nn.Module):
-    def __init__(self, input_size, encoding_dim, hidden_dim):
-        super(Autoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_size, hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, encoding_dim), nn.ReLU()
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(encoding_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, input_size),
-            nn.Sigmoid(),
-        )
+class VariationalEncoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dims):
+        super(VariationalEncoder, self).__init__()
+        self.linear1 = nn.Linear(input_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, latent_dims)
+        self.linear3 = nn.Linear(hidden_dim, latent_dims)
+
+        self.N = torch.distributions.Normal(0, 1)
+        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
+        self.N.scale = self.N.scale.cuda()
+        self.kl = 0
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
+        x = torch.flatten(x, start_dim=1)
+        x = F.relu(self.linear1(x))
+        mu =  self.linear2(x)
+        sigma = torch.exp(self.linear3(x))
+        z = mu + sigma*self.N.sample(mu.shape)
+        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+        return z
 
+class Decoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dims):
+        super(Decoder, self).__init__()
+        self.linear1 = nn.Linear(latent_dims, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, input_dim)
 
-def load_data(device, batch_size, n_top_genes = None):
-    data_path = (
-        "/lustre/groups/ml01/workspace/mojtaba.bahrami/proformer/data/cxg_10M_subset/"
-    )
-    filename = "adata_0.h5ad"
-    train_path = f"{data_path}/train/{filename}"
-    test_path = f"{data_path}/test/{filename}"
+    def forward(self, z):
+        z = F.relu(self.linear1(z))
+        z = torch.sigmoid(self.linear2(z))
+        return z
 
-    print('loading train data')
-    train = sc.read_h5ad(train_path)
-    
-    print('loading test data')
-    test = sc.read_h5ad(test_path)
-    
-    if n_top_genes:
-        train = sc.pp.highly_variable_genes(train, n_top_genes=n_top_genes)
-        train = sc.pp.highly_variable_genes(test, n_top_genes = n_top_genes)
+class VariationalAutoencoder(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dims):
+        super(VariationalAutoencoder, self).__init__()
+        self.encoder = VariationalEncoder(input_dim, hidden_dim, latent_dims)
+        self.decoder = Decoder(input_dim, hidden_dim, latent_dims)
+
+    def forward(self, x):
+        z = self.encoder(x)
+        return self.decoder(z)
+
+def get_data_path():
+    return Path.home() / 'data/scpoli/pancreas_sparse.h5ad'
+
+def get_model_path():
+    return Path.home() / "models/simple-autoencoder.pth"
+
+def get_device():
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+def load_data(device, batch_size):
+    data_path = get_data_path()
+
+    print('loading data')
+    data = sc.read_h5ad(data_path)
+
+    train_idx, test_idx = train_test_split(range(len(data)))
+    train, test = data[train_idx], data[test_idx]
         
     x_dim = train[0].shape[1]
     print(f'x_dim : {x_dim}')
@@ -58,18 +82,19 @@ def load_data(device, batch_size, n_top_genes = None):
     return train_loader, test_loader, x_dim
 
 
-def train_step(model, data_loader, loss_fn, optimizer, device):
-    train_loss = 0
+def train_step(model, data_loader, optimizer, device):
     model.to(device)
+    overal_loss = 0
     for batch, data in enumerate(data_loader):
-
+        
         # 1. Forward pass
-        y_pred = model(data.X)
+        x_hat = model(data.X)
 
         # 2. Calculate loss
-        loss = loss_fn(y_pred, data.X)
-        train_loss += loss
-
+        
+        loss = ((data.X - x_hat)**2).sum() + model.encoder.kl
+        overal_loss += loss
+        
         # 3. Optimizer zero grad
         optimizer.zero_grad()
 
@@ -78,12 +103,12 @@ def train_step(model, data_loader, loss_fn, optimizer, device):
 
         # 5. Optimizer step
         optimizer.step()
+    
+    overal_loss /= len(data_loader)
+    return overal_loss
 
-    train_loss /= len(data_loader)
-    return train_loss
 
-
-def test_step(data_loader, model, loss_fn, device):
+def test_step(data_loader, model, device):
     test_loss = 0
     model.to(device)
     model.eval()  # put model in eval mode
@@ -92,10 +117,13 @@ def test_step(data_loader, model, loss_fn, device):
         for data in data_loader:
 
             # 1. Forward pass
-            test_pred = model(data.X)
+            x_hat = model(data.X)
+
+            # 2. Calculate loss
+            loss = ((data.X - x_hat)**2).sum() + model.encoder.kl
 
             # 2. Calculate loss and accuracy
-            test_loss += loss_fn(test_pred, data.X)
+            test_loss += loss.item()
 
         # Adjust metrics and print out
         test_loss /= len(data_loader)
@@ -115,23 +143,23 @@ def save_model_checkpoint(model, opt, epoch, save_path):
 
 if __name__ == "__main__":
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = get_device()
     print(device)
 
     # load data
-    batch_size = 16
-    train_loader, test_loader, input_size = load_data(device, batch_size, 256)
+    batch_size = 128
+    train_loader, test_loader, input_size = load_data(device, batch_size)
 
     # define model
-    encoding_dim = 16
-    hidden_dim = 32
-    model = Autoencoder(input_size, encoding_dim, hidden_dim)
+    encoding_dim = 128
+    hidden_dim = 256
+    model = VariationalAutoencoder(input_size, hidden_dim, encoding_dim)
 
     # init training parameters
     epochs = 1000
-    criterion = nn.MSELoss()
+    
     optimizer = optim.Adam(model.parameters(), lr=0.003)
-    model_path = Path.home() / "models/simple-autoencoder.pth"
+    model_path = get_model_path()
 
     # init wandb
     wandb.init(
@@ -139,7 +167,7 @@ if __name__ == "__main__":
         project="interpretable-ssl",
         # track hyperparameters and run metadata
         config={
-            "model": "autoencoder",
+            "model": "vae",
             "encoding dim": encoding_dim,
             "hidden dim": hidden_dim,
             "epochs": epochs,
@@ -152,8 +180,8 @@ if __name__ == "__main__":
     print("start training")
     st = time.time()
     for epoch in tqdm(range(epochs)):
-        train_loss = train_step(model, train_loader, criterion, optimizer, device)
-        test_loss = test_step(test_loader, model, criterion, device)
+        train_loss = train_step(model, train_loader, optimizer, device)
+        test_loss = test_step(test_loader, model, device)
         
 
         wandb.log({"train_loss": train_loss, "test_loss": test_loss})
