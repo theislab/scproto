@@ -1,16 +1,13 @@
+# https://avandekleut.github.io/vae/
 import torch.nn as nn
-import scanpy as sc
 import torch
-from anndata.experimental.pytorch import AnnLoader
 import torch.optim as optim
 import wandb
 from tqdm.auto import tqdm
-from pathlib import Path
 
 import time
 import torch.nn.functional as F
-from sklearn.model_selection import train_test_split
-
+import pancras_data
 
 class VariationalEncoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dims):
@@ -20,18 +17,19 @@ class VariationalEncoder(nn.Module):
         self.linear3 = nn.Linear(hidden_dim, latent_dims)
 
         self.N = torch.distributions.Normal(0, 1)
-        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
+        self.N.loc = self.N.loc.cuda()  # hack to get sampling on the GPU
         self.N.scale = self.N.scale.cuda()
         self.kl = 0
 
     def forward(self, x):
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.linear1(x))
-        mu =  self.linear2(x)
+        mu = self.linear2(x)
         sigma = torch.exp(self.linear3(x))
-        z = mu + sigma*self.N.sample(mu.shape)
-        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
+        z = mu + sigma * self.N.sample(mu.shape)
+        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1 / 2).sum()
         return z
+
 
 class Decoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dims):
@@ -44,9 +42,16 @@ class Decoder(nn.Module):
         z = torch.sigmoid(self.linear2(z))
         return z
 
+
 class VariationalAutoencoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dims):
         super(VariationalAutoencoder, self).__init__()
+        self.input_dim, self.hidden_dim, self.latent_dims = (
+            input_dim,
+            hidden_dim,
+            latent_dims,
+        )
+        print(self.latent_dims)
         self.encoder = VariationalEncoder(input_dim, hidden_dim, latent_dims)
         self.decoder = Decoder(input_dim, hidden_dim, latent_dims)
 
@@ -54,47 +59,29 @@ class VariationalAutoencoder(nn.Module):
         z = self.encoder(x)
         return self.decoder(z)
 
-def get_data_path():
-    return Path.home() / 'data/scpoli/pancreas_sparse.h5ad'
 
-def get_model_path():
-    return Path.home() / "models/simple-autoencoder.pth"
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
 
-def load_data(device, batch_size):
-    data_path = get_data_path()
 
-    print('loading data')
-    data = sc.read_h5ad(data_path)
 
-    train_idx, test_idx = train_test_split(range(len(data)))
-    train, test = data[train_idx], data[test_idx]
-        
-    x_dim = train[0].shape[1]
-    print(f'x_dim : {x_dim}')
-    
-    train_loader = AnnLoader(
-        train, batch_size=batch_size, shuffle=True, use_cuda=device
-    )
-    test_loader = AnnLoader(test, batch_size=batch_size, use_cuda=device)
-    return train_loader, test_loader, x_dim
 
+def vae_loss(x, x_hat, kl):
+    return ((x - x_hat) ** 2).sum() + kl
 
 def train_step(model, data_loader, optimizer, device):
     model.to(device)
     overal_loss = 0
     for batch, data in enumerate(data_loader):
-        
+
         # 1. Forward pass
         x_hat = model(data.X)
 
         # 2. Calculate loss
-        
-        loss = ((data.X - x_hat)**2).sum() + model.encoder.kl
+        loss = vae_loss(data.X, x_hat, model.encoder.kl)
         overal_loss += loss
-        
+
         # 3. Optimizer zero grad
         optimizer.zero_grad()
 
@@ -103,7 +90,7 @@ def train_step(model, data_loader, optimizer, device):
 
         # 5. Optimizer step
         optimizer.step()
-    
+
     overal_loss /= len(data_loader)
     return overal_loss
 
@@ -120,7 +107,7 @@ def test_step(data_loader, model, device):
             x_hat = model(data.X)
 
             # 2. Calculate loss
-            loss = ((data.X - x_hat)**2).sum() + model.encoder.kl
+            loss = ((data.X - x_hat) ** 2).sum() + model.encoder.kl
 
             # 2. Calculate loss and accuracy
             test_loss += loss.item()
@@ -148,7 +135,7 @@ if __name__ == "__main__":
 
     # load data
     batch_size = 128
-    train_loader, test_loader, input_size = load_data(device, batch_size)
+    train_loader, test_loader, input_size = pancras_data.load_data(device, batch_size)
 
     # define model
     encoding_dim = 128
@@ -157,9 +144,9 @@ if __name__ == "__main__":
 
     # init training parameters
     epochs = 1000
-    
+
     optimizer = optim.Adam(model.parameters(), lr=0.003)
-    model_path = get_model_path()
+    model_path = pancras_data.get_model_path()
 
     # init wandb
     wandb.init(
@@ -182,11 +169,10 @@ if __name__ == "__main__":
     for epoch in tqdm(range(epochs)):
         train_loss = train_step(model, train_loader, optimizer, device)
         test_loss = test_step(test_loader, model, device)
-        
 
         wandb.log({"train_loss": train_loss, "test_loss": test_loss})
-        
+
         if best_test_loss > test_loss:
             save_model_checkpoint(model, optimizer, epoch, model_path)
-            
+
     print(f"training took {time.time() - st} seconds")
