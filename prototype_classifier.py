@@ -110,7 +110,7 @@ def train_step(model: ProtClassifier, data_loader, optimizer, device):
         # 5. Optimizer step
         optimizer.step()
     overal_loss.normalize(len(data_loader))
-    return overal_loss.__dict__
+    return overal_loss
 
 
 def test_step(data_loader, model, device):
@@ -134,7 +134,7 @@ def test_step(data_loader, model, device):
             test_loss += batch_loss
 
         test_loss.normalize(len(data_loader))
-    return test_loss.__dict__
+    return test_loss
 
 
 def get_home():

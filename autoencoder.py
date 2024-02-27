@@ -115,15 +115,7 @@ def test_step(data_loader, model, device):
     return test_loss
 
 
-def save_model_checkpoint(model, opt, epoch, save_path):
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": opt.state_dict(),
-        },
-        save_path,
-    )
+
 
 
 if __name__ == "__main__":
@@ -171,6 +163,6 @@ if __name__ == "__main__":
         wandb.log({"train_loss": train_loss, "test_loss": test_loss})
 
         if best_test_loss > test_loss:
-            save_model_checkpoint(model, optimizer, epoch, model_path)
+            utils.save_model_checkpoint(model, optimizer, epoch, model_path)
 
     print(f"training took {time.time() - st} seconds")

@@ -50,20 +50,22 @@ if __name__ == "__main__":
     )
 
     # train loop
-    best_test_loss = 100000
+    best_test_acc = 0
     print("start training")
     st = time.time()
     for epoch in tqdm(range(epochs)):
         train_loss = prototype_classifier.train_step(
             model, train_loader, optimizer, device
         )
-        train_loss_dict = prototype_classifier.add_prefix_key(train_loss, "train")
+        train_loss_dict = prototype_classifier.add_prefix_key(train_loss.__dict__, "train")
 
         test_loss = prototype_classifier.test_step(test_loader, model, device)
-        test_loss_dict = prototype_classifier.add_prefix_key(test_loss, "test")
+        test_loss_dict = prototype_classifier.add_prefix_key(test_loss.__dict__, "test")
 
         train_loss_dict.update(test_loss_dict)
 
         wandb.log(train_loss_dict)
+        if test_loss.acc > best_test_acc:
+            utils.save_model_checkpoint(model, optimizer, epoch, model_path)
 
     print(f"training took {time.time() - st} seconds")
