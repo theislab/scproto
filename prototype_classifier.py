@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 import wandb
-from autoencoder import vae_loss, VariationalAutoencoder, get_device
+from autoencoder import vae_loss, VariationalAutoencoder
 
 
 from torchvision import datasets, transforms
 import torch.optim as optim
 import time
 from tqdm.auto import tqdm
-
+import utils
 
 class ProtClassifier(VariationalAutoencoder):
     def __init__(self, num_prototypes, num_classes, **kwds) -> None:
@@ -54,12 +54,17 @@ class ProtClassifier(VariationalAutoencoder):
 class PrototypeLoss:
     def __init__(self) -> None:
         self.vae, self.classification, self.interpretablity = 0, 0, 0
-        self.loss = 0
+        self.loss, self.acc = 0, 0
 
     def calculate(self, x, x_hat, z, y, y_pred, model: ProtClassifier):
         self.vae = vae_loss(x, x_hat, model.encoder.kl)
         self.classification = model.classification_loss(y_pred, y)
         self.interpretablity = model.calculate_interpretablity_loss(z)
+        
+        # 2. Calculate loss and accuracy
+        # Calculate and accumulate accuracy
+        pred_labels = y_pred.argmax(dim=1)
+        self.acc += (pred_labels == y).sum().item() / len(y)
         self.loss = (
             self.interpretablity + model.vae_reg * self.vae + self.classification
         )
@@ -70,6 +75,7 @@ class PrototypeLoss:
         new_loss.classification = self.classification + l.classification
         new_loss.interpretablity = self.interpretablity + l.interpretablity
         new_loss.loss = self.loss + l.loss
+        new_loss.acc = self.acc + l.acc
         return new_loss
 
     def normalize(self, data_loader_size):
@@ -77,6 +83,7 @@ class PrototypeLoss:
         self.classification /= data_loader_size
         self.interpretablity /= data_loader_size
         self.loss /= data_loader_size
+        self.acc /= data_loader_size
 
 
 def train_step(model: ProtClassifier, data_loader, optimizer, device):
@@ -87,9 +94,7 @@ def train_step(model: ProtClassifier, data_loader, optimizer, device):
     for x, y in data_loader:
         # 1. Forward pass
         x, y = x.to(device), y.to(device)
-        h, w = x.shape[2:]
-        x = x.reshape(-1, h * w)
-        z, x_hat, logits = model.forward(x)
+        z, x_hat, logits = model(x)
 
         # 2. Calculate loss
         batch_loss = PrototypeLoss()
@@ -111,7 +116,6 @@ def train_step(model: ProtClassifier, data_loader, optimizer, device):
 def test_step(data_loader, model, device):
 
     test_loss = PrototypeLoss()
-    acc = 0
     model.to(device)
     model.eval()  # put model in eval mode
 
@@ -120,22 +124,16 @@ def test_step(data_loader, model, device):
         for x, y in data_loader:
             x = x.to(device)
             y = y.to(device)
-            h, w = x.shape[2:]
-            x = x.reshape(-1, h * w)
 
             # 1. Forward pass
-            x_hat, y_pred = model(x)
+            z, x_hat, y_pred = model(x)
 
             # 2. Calculate loss
             batch_loss = PrototypeLoss()
-            batch_loss.calculate(x, x_hat, y, y_pred, model)
+            batch_loss.calculate(x, x_hat, z, y, y_pred, model)
             test_loss += batch_loss
 
-            # 2. Calculate loss and accuracy
-            # Calculate and accumulate accuracy
-            pred_labels = y_pred.argmax(dim=1)
-            acc += (pred_labels == y).sum().item() / len(y)
-    test_loss.normalize(len(data_loader))
+        test_loss.normalize(len(data_loader))
     return test_loss.__dict__
 
 
@@ -143,7 +141,7 @@ def get_home():
     return "/home/icb/fatemehs.hashemig"
 
 
-def load_data():
+def load_mnist():
     # load data
     batch_size = 128
     transform = transforms.Compose(
@@ -176,11 +174,11 @@ def add_prefix_key(dict, prefix):
 
 if __name__ == "__main__":
 
-    device = get_device()
+    device = utils.get_device()
     print(device)
 
     # laod data
-    train_loader, test_loader = load_data()
+    train_loader, test_loader = load_mnist()
 
     # define model
     num_prototypes, num_classes = 10, 10

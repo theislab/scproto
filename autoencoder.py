@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 import time
 import torch.nn.functional as F
 import pancras_data
+import utils
 
 class VariationalEncoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dims):
@@ -60,9 +61,6 @@ class VariationalAutoencoder(nn.Module):
         return self.decoder(z)
 
 
-
-def get_device():
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 
@@ -130,7 +128,7 @@ def save_model_checkpoint(model, opt, epoch, save_path):
 
 if __name__ == "__main__":
 
-    device = get_device()
+    device = utils.get_device()
     print(device)
 
     # load data
