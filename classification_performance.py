@@ -1,4 +1,5 @@
-from torcheval.metrics import MulticlassAUPRC, multiclass_f1_score
+from torcheval.metrics import MulticlassAUPRC
+from torcheval.metrics.functional import multiclass_f1_score
 from pancras_data import PancrasDataset
 import utils
 import pancras_prot_train, pancras_linear_classifier
@@ -9,7 +10,7 @@ def evaluate(y, logits):
     f1 = multiclass_f1_score(y, y_pred, num_classes=14, average='macro')
     auprc = MulticlassAUPRC(num_classes=14)
     auprc.update(logits, y_test)
-    return f1, auprc.compute().cpu().numpy()[0]
+    return f1, auprc.compute().cpu().numpy()
 
 if __name__ == "__main__":
     device = utils.get_device()
@@ -33,14 +34,15 @@ if __name__ == "__main__":
         hidden_dim=hidden_dim,
         latent_dims=latent_dims,
     )
-    protc.load_state_dict(torch.load(pancras_prot_train.get_model_path())["model_state_dict"])
+    protc.load_state_dict(torch.load(pancras_prot_train.get_model_path(num_prototypes))["model_state_dict"])
     protc.to(device)
     _, _, prot_logits = protc(x_test)
     f1, auprc = evaluate(y_test, prot_logits)
     print(f'prot f1:{f1}, auprc: {auprc}')
 
     linear = torch.nn.Sequential(torch.nn.Linear(8, 14, bias=False))
-    linear.load_state_dict(pancras_linear_classifier.get_model_path()["model_state_dict"])
+    linear.load_state_dict(torch.load(pancras_linear_classifier.get_model_path())["model_state_dict"])
+    linear.to(device)
     pancras.set_use_pca(True)
     train, test = pancras.get_train_test()
     
