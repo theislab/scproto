@@ -25,3 +25,6 @@ def save_model_checkpoint(model, opt, epoch, save_path):
         },
         save_path,
     )
+    
+def get_pancras_model_dir():
+    return get_home() + '/models/pancras/'

@@ -4,8 +4,10 @@ from autoencoder import *
 import json
 from pancras_data import PancrasDataset
 from torch.utils.data import DataLoader
-import pancras_train
+import pancras_prot_train
 from prototype_classifier import ProtClassifier
+import pandas as pd
+import utils
 
 def calculate_mean_var_latent(model, data_loader):
     z_arr = []
@@ -41,7 +43,7 @@ def downstream(gene_names):
         },
     )
     return r.json()['result']
-import utils, pancras_data
+
 if __name__ == "__main__":
 
     device = utils.get_device()
@@ -49,12 +51,12 @@ if __name__ == "__main__":
     # load data
     batch_size = 64
     print("loading data")
-    pancras_data = PancrasDataset(device)
-    data_loader = DataLoader(pancras_data, batch_size=batch_size, shuffle=False)
+    pancras = PancrasDataset(device)
+    data_loader = DataLoader(pancras, batch_size=batch_size, shuffle=False)
 
     # load model
     # define model
-    num_prototypes, num_classes = 4, 14
+    num_prototypes, num_classes = 8, 14
     input_dim, hidden_dim, latent_dims = 4000, 64, 8
     model = ProtClassifier(
         num_prototypes=num_prototypes,
@@ -63,7 +65,7 @@ if __name__ == "__main__":
         hidden_dim=hidden_dim,
         latent_dims=latent_dims,
     )
-    model_path = pancras_train.get_model_path(num_prototypes)
+    model_path = pancras_prot_train.get_model_path(num_prototypes)
     model.load_state_dict(torch.load(model_path)["model_state_dict"])
     model.to(device)
 
@@ -84,15 +86,18 @@ if __name__ == "__main__":
     prot_diff = prot_cells - mean_cell
 
     # find k mostly affected genes for each dim
-    k = 5
+    k = num_classes
     top_idx = torch.topk(prot_diff, k).indices
-    tops_genes = [list(pancras_data.adata.var.index[idx.cpu()]) for idx in top_idx]
+    tops_genes = [list(pancras.adata.var.index[idx.cpu()]) for idx in top_idx]
 
     # do downstream analysis on mostly affected genes (go analysis - pathway analysis)
-    res = {}
+    res = []
+    res_cnt = []
     for genes in tops_genes:
-        res[str(genes)] = downstream(genes)
-        print(len(res[str(genes)]))
+        genes_downstream = downstream(genes)
+        res.append(genes_downstream)
+        res_cnt.append(len(genes_downstream))
+    print(res_cnt)
         
-    with open('downstream.json', 'w') as f:
-        json.dump(res, f)
+    # df = pd.DataFrame({'genes': tops_genes, 'biological': res, 'cnt': res_cnt})
+    # df.to_csv('results/prototypes-interpretation.csv')
