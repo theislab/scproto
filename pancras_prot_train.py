@@ -14,17 +14,10 @@ def get_model_name(num_prototypes):
 def get_model_path(num_prototypes):
     model_name = get_model_name(num_prototypes)
     return utils.get_pancras_model_dir() + model_name
-    
-if __name__ == "__main__":
-    # load data
-    device = utils.get_device()
-    batch_size = 64
-    pancras_data = PancrasDataset(device)
-    train_loader, test_loader = utils.get_train_test_loader(pancras_data, batch_size)
 
-    # define model
+num_prototypes = 8
+def get_model():
     num_classes = 14
-    num_prototypes, num_classes = 8, 14
     input_dim, hidden_dim, latent_dims = 4000, 64, 8
     model = ProtClassifier(
         num_prototypes=num_prototypes,
@@ -33,6 +26,16 @@ if __name__ == "__main__":
         hidden_dim=hidden_dim,
         latent_dims=latent_dims,
     )
+    return model
+if __name__ == "__main__":
+    # load data
+    device = utils.get_device()
+    batch_size = 64
+    pancras_data = PancrasDataset(device)
+    train_loader, test_loader = utils.get_train_test_loader(pancras_data, batch_size)
+
+    # define model
+    model = get_model()
 
     # init training parameter and wandb
     epochs = 100
