@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 
 import time
 import torch.nn.functional as F
-import pancras_data
+import interpretable_ssl.pancras.data as data
 import utils
 
 class VariationalEncoder(nn.Module):
@@ -118,14 +118,14 @@ def test_step(data_loader, model, device):
 
 
 
-if __name__ == "__main__":
+def main():
 
     device = utils.get_device()
     print(device)
 
     # load data
     batch_size = 128
-    train_loader, test_loader, input_size = pancras_data.load_data(device, batch_size)
+    train_loader, test_loader, input_size = data.load_data(device, batch_size)
 
     # define model
     encoding_dim = 128
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     epochs = 1000
 
     optimizer = optim.Adam(model.parameters(), lr=0.003)
-    model_path = pancras_data.get_model_path()
+    model_path = data.get_model_path()
 
     # init wandb
     wandb.init(

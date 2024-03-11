@@ -1,4 +1,4 @@
-from pancras_data import PancrasDataset
+from interpretable_ssl.pancras.data import PancrasDataset
 import utils
 from torch.utils.data import random_split
 import torch
@@ -37,7 +37,7 @@ def calculate_acc_and_loss(model, X, y, loss_fn):
     loss = loss_fn(y_pred, y)
     return accuracy, loss
 
-if __name__ == "__main__":
+def main():
 
     device = utils.get_device()
     # load data

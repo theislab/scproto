@@ -1,7 +1,7 @@
-from pancras_data import *
+from interpretable_ssl.pancras.data import *
 import scanpy as sc
 
-if __name__ == "__main__":
+def main():
     # load data
     pancras = PancrasDataset()
     

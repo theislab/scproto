@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import wandb
-from autoencoder import vae_loss, VariationalAutoencoder
+from interpretable_ssl.models.autoencoder import vae_loss, VariationalAutoencoder
 
 
 from torchvision import datasets, transforms
@@ -171,8 +171,7 @@ def add_prefix_key(dict, prefix):
         new_dict[f"{prefix}_{key}"] = dict[key]
     return new_dict
 
-
-if __name__ == "__main__":
+def main():
 
     device = utils.get_device()
     print(device)

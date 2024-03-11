@@ -1,6 +1,6 @@
 import numpy
 from sklearn.preprocessing import LabelEncoder
-import pancras_data
+import interpretable_ssl.pancras.data as data
 import pickle as pkl
 
 
@@ -12,9 +12,9 @@ def load_label_encoder():
     return pkl.load(open(get_label_encoder_path(), 'rb'))
 
 
-if __name__ == "__main__":
+def main():
     # load pancras data
-    adata = pancras_data.read_adata()
+    adata = data.read_adata()
 
     # fit label encoder
     le = LabelEncoder()

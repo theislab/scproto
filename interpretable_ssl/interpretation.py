@@ -1,11 +1,11 @@
 import torch
 import requests
-from autoencoder import *
+from interpretable_ssl.models.autoencoder import *
 import json
-from pancras_data import PancrasDataset
+from interpretable_ssl.pancras.data import PancrasDataset
 from torch.utils.data import DataLoader
-import pancras_prot_train
-from prototype_classifier import ProtClassifier
+import interpretable_ssl.pancras.train.vae_prototype_classifier as vae_prototype_classifier
+from interpretable_ssl.models.prototype_classifier import ProtClassifier
 import pandas as pd
 import utils
 
@@ -44,7 +44,7 @@ def downstream(gene_names):
     )
     return r.json()['result']
 
-if __name__ == "__main__":
+def main():
 
     device = utils.get_device()
 
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         hidden_dim=hidden_dim,
         latent_dims=latent_dims,
     )
-    model_path = pancras_prot_train.get_model_path(num_prototypes)
+    model_path = vae_prototype_classifier.get_model_path(num_prototypes)
     model.load_state_dict(torch.load(model_path)["model_state_dict"])
     model.to(device)
 

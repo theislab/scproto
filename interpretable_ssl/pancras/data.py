@@ -6,7 +6,7 @@ from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
 import torch
 from torch.utils.data import random_split
-from _label_encoder import *
+from interpretable_ssl.pancras._label_encoder import *
 
 
 def get_data_path():

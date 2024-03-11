@@ -1,0 +1,9 @@
+data
+cache
+.ipynb
+__pycache__
+test.ipynb
+.ipynb_checkpoints
+wandb
+results
+run.sbatch
