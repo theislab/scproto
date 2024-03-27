@@ -1,5 +1,5 @@
-from interpretable_ssl.pancras.data import PancrasDataset
-import utils
+from interpretable_ssl.pancras.dataset import PancrasDataset
+import interpretable_ssl.utils as utils
 from torch.utils.data import random_split
 import torch
 import wandb

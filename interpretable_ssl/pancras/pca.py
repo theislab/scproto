@@ -1,4 +1,4 @@
-from interpretable_ssl.pancras.data import *
+from interpretable_ssl.pancras.dataset import *
 import scanpy as sc
 
 def main():
