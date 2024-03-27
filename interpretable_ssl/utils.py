@@ -1,6 +1,6 @@
 import torch
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+from sklearn.preprocessing import LabelEncoder
+import pickle as pkl
 from torch.utils.data import random_split
 
 def get_device():
@@ -9,13 +9,6 @@ def get_device():
 def get_home():
     return "/home/icb/fatemehs.hashemig/"
 
-def get_train_test_loader(dataset, batch_size):
-
-    train, test = random_split(dataset, [0.7, 0.3], generator=torch.Generator().manual_seed(42))
-    train_loader, test_loader = DataLoader(
-        train, batch_size=batch_size, shuffle=True
-    ), DataLoader(test, batch_size=batch_size, shuffle=False)
-    return train_loader, test_loader
 def save_model_checkpoint(model, opt, epoch, save_path):
     torch.save(
         {
@@ -28,3 +21,19 @@ def save_model_checkpoint(model, opt, epoch, save_path):
     
 def get_pancras_model_dir():
     return get_home() + '/models/pancras/'
+
+def fit_label_encoder(adata, save_path):
+
+    # fit label encoder
+    le = LabelEncoder()
+    le.fit(adata.obs["cell_type"])
+
+    # save it
+    pkl.dump(le, open(save_path, 'wb'))
+    
+def get_model_dir():
+    return get_home() + 'models/'
+
+def sample_dataset(dataset, sample_ratio):
+    sample, _ = random_split(dataset, [sample_ratio, 1-sample_ratio], generator=torch.Generator().manual_seed(42))
+    return sample

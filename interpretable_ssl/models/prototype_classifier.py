@@ -8,7 +8,7 @@ from torchvision import datasets, transforms
 import torch.optim as optim
 import time
 from tqdm.auto import tqdm
-import utils
+import interpretable_ssl.utils as utils
 
 class ProtClassifier(VariationalAutoencoder):
     def __init__(self, num_prototypes, num_classes, **kwds) -> None:
@@ -40,6 +40,7 @@ class ProtClassifier(VariationalAutoencoder):
         p_dist = self.prototype_distance(z)
         p_dist = p_dist.reshape(-1, self.num_prototypes)
         logits = self.classifier(p_dist)
+        # y = torch.softmax(logits, dim=1)
         return z, self.decoder(z), logits
 
     def calculate_interpretablity_loss(self, z):
@@ -106,6 +107,8 @@ def train_step(model: ProtClassifier, data_loader, optimizer, device):
 
         # 4. Loss backward
         batch_loss.loss.backward()
+
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # or some other value
 
         # 5. Optimizer step
         optimizer.step()

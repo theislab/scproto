@@ -7,15 +7,19 @@ from tqdm.auto import tqdm
 
 import time
 import torch.nn.functional as F
-import interpretable_ssl.pancras.data as data
-import utils
+import interpretable_ssl.pancras.dataset as dataset
+import interpretable_ssl.utils as utils
 
 class VariationalEncoder(nn.Module):
-    def __init__(self, input_dim, hidden_dim, latent_dims):
+    def __init__(self, input_dim, hidden_dim, latent_dims, use_bn=True):
         super(VariationalEncoder, self).__init__()
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, latent_dims)
         self.linear3 = nn.Linear(hidden_dim, latent_dims)
+        if use_bn:
+            self.bn1 = nn.BatchNorm1d(hidden_dim, affine=True)
+            self.bn2 = nn.BatchNorm1d(latent_dims, affine=True)
+            self.bn3 = nn.BatchNorm1d(latent_dims, affine=True)
 
         self.N = torch.distributions.Normal(0, 1)
         self.N.loc = self.N.loc.cuda()  # hack to get sampling on the GPU
@@ -24,9 +28,12 @@ class VariationalEncoder(nn.Module):
 
     def forward(self, x):
         x = torch.flatten(x, start_dim=1)
-        x = F.relu(self.linear1(x))
+        x = F.relu(self.bn1(self.linear1(x)))
+        
         mu = self.linear2(x)
-        sigma = torch.exp(self.linear3(x))
+        mu = self.bn2(mu)
+        
+        sigma = torch.exp(self.bn3(self.linear3(x)))
         z = mu + sigma * self.N.sample(mu.shape)
         self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1 / 2).sum()
         return z
@@ -37,10 +44,13 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.linear1 = nn.Linear(latent_dims, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, input_dim)
+        
+        self.bn1 = nn.BatchNorm1d(hidden_dim, affine=True)
+        self.bn2 = nn.BatchNorm1d(input_dim, affine=True)
 
     def forward(self, z):
-        z = F.relu(self.linear1(z))
-        z = torch.sigmoid(self.linear2(z))
+        z = F.relu(self.bn1(self.linear1(z)))
+        z = torch.sigmoid(self.bn2(self.linear2(z)))
         return z
 
 
@@ -52,7 +62,6 @@ class VariationalAutoencoder(nn.Module):
             hidden_dim,
             latent_dims,
         )
-        print(self.latent_dims)
         self.encoder = VariationalEncoder(input_dim, hidden_dim, latent_dims)
         self.decoder = Decoder(input_dim, hidden_dim, latent_dims)
 
@@ -125,7 +134,7 @@ def main():
 
     # load data
     batch_size = 128
-    train_loader, test_loader, input_size = data.load_data(device, batch_size)
+    train_loader, test_loader, input_size = dataset.load_data(device, batch_size)
 
     # define model
     encoding_dim = 128
@@ -136,7 +145,7 @@ def main():
     epochs = 1000
 
     optimizer = optim.Adam(model.parameters(), lr=0.003)
-    model_path = data.get_model_path()
+    model_path = dataset.get_model_path()
 
     # init wandb
     wandb.init(

@@ -1,7 +1,7 @@
 from torcheval.metrics import MulticlassAUPRC
 from torcheval.metrics.functional import multiclass_f1_score
-from interpretable_ssl.pancras.data import PancrasDataset
-import utils
+from interpretable_ssl.pancras.dataset import PancrasDataset
+import interpretable_ssl.utils as utils
 import interpretable_ssl.pancras.train.vae_prototype_classifier as vae_prototype_classifier, interpretable_ssl.pancras.train.linear_classifier as pancras_linear_classifier
 import torch
 
