@@ -1,4 +1,4 @@
-from interpretable_ssl.vae_protc_trainer import Trainer
+from interpretable_ssl.trainer import Trainer
 import interpretable_ssl.utils as utils
 from interpretable_ssl.immune.dataset import ImmuneDataset
 from pathlib import Path
@@ -6,12 +6,12 @@ class ImmuneTrainer(Trainer):
     def __init__(self, partially_train_ratio=None, split_study=False) -> None:
         self.split_study = split_study
         super().__init__(partially_train_ratio)
-        # self.batch_size = 16
+        self.batch_size = 32
         
         # # self.latent_dims = 16
-        # self.hidden_dim = 128
+        self.hidden_dim = 128
         self.num_prototypes = 32
-        print(f'training with number of prototypes : {self.num_prototypes}')
+        print(f'training with number of prototypes : {self.get_model_name()}')
         
     def get_dataset(self):
         return ImmuneDataset()

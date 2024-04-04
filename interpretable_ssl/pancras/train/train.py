@@ -1,4 +1,4 @@
-from interpretable_ssl.vae_protc_trainer import Trainer
+from interpretable_ssl.trainer import Trainer
 from interpretable_ssl.pancras.dataset import *
 import interpretable_ssl.utils as utils
 
