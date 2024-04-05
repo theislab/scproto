@@ -51,13 +51,17 @@ class ProtClassifier(VariationalAutoencoder):
             self.reg1 * p_dist.min(1).values.mean()
             + self.reg2 * f_dist.min(1).values.mean()
         )
+    
+    def get_dict(self):
+        dict = self.__dict__
+        
 
 
 class PrototypeLoss:
     def __init__(self, num_classes) -> None:
         self.vae, self.classification, self.interpretablity = 0, 0, 0
         self.loss, self.acc = 0, 0
-        self.f1_macro, self.f1_weighted = 0, 0
+        # self.f1_macro, self.f1_weighted = 0, 0
         self.num_classes = num_classes
 
     def calculate(self, x, x_hat, z, y, y_pred, model: ProtClassifier):
@@ -69,12 +73,12 @@ class PrototypeLoss:
         # Calculate and accumulate accuracy
         pred_labels = y_pred.argmax(dim=1)
         self.acc += (pred_labels == y).sum().item() / len(y)
-        self.f1_macro = multiclass_f1_score(
-            pred_labels, y, num_classes=self.num_classes, average="macro"
-        )
-        self.f1_weighted = multiclass_f1_score(
-            pred_labels, y, num_classes=self.num_classes, average="weighted"
-        )
+        # self.f1_macro = multiclass_f1_score(
+        #     pred_labels, y, num_classes=self.num_classes, average="macro"
+        # )
+        # self.f1_weighted = multiclass_f1_score(
+        #     pred_labels, y, num_classes=self.num_classes, average="weighted"
+        # )
         self.loss = (
             self.interpretablity + model.vae_reg * self.vae + self.classification
         )
@@ -86,8 +90,8 @@ class PrototypeLoss:
         new_loss.interpretablity = self.interpretablity + l.interpretablity
         new_loss.loss = self.loss + l.loss
         new_loss.acc = self.acc + l.acc
-        new_loss.f1_macro += self.f1_macro
-        new_loss.f1_weighted += self.f1_weighted
+        # new_loss.f1_macro += self.f1_macro
+        # new_loss.f1_weighted += self.f1_weighted
         return new_loss
 
     def normalize(self, data_loader_size):
@@ -96,8 +100,8 @@ class PrototypeLoss:
         self.interpretablity /= data_loader_size
         self.loss /= data_loader_size
         self.acc /= data_loader_size
-        self.f1_macro /= data_loader_size
-        self.f1_weighted /= data_loader_size
+        # self.f1_macro /= data_loader_size
+        # self.f1_weighted /= data_loader_size
         
 
 
