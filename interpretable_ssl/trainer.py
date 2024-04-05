@@ -98,12 +98,12 @@ class Trainer:
                 model, train_loader, optimizer, self.device
             )
             train_loss_dict = prototype_classifier.add_prefix_key(
-                train_loss.__dict__, "train"
+                train_loss.get_dict(), "train"
             )
 
             test_loss = prototype_classifier.test_step(test_loader, model, self.device)
             test_loss_dict = prototype_classifier.add_prefix_key(
-                test_loss.__dict__, "test"
+                test_loss.get_dict(), "test"
             )
 
             train_loss_dict.update(test_loss_dict)

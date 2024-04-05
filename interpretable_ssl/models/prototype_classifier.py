@@ -52,9 +52,6 @@ class ProtClassifier(VariationalAutoencoder):
             + self.reg2 * f_dist.min(1).values.mean()
         )
     
-    def get_dict(self):
-        dict = self.__dict__
-        
 
 
 class PrototypeLoss:
@@ -102,6 +99,10 @@ class PrototypeLoss:
         self.acc /= data_loader_size
         # self.f1_macro /= data_loader_size
         # self.f1_weighted /= data_loader_size
+    def get_dict(self):
+        dict = self.__dict__
+        dict.pop('num_classes', None)
+        return dict
         
 
 
