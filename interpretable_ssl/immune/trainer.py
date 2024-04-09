@@ -1,4 +1,4 @@
-from interpretable_ssl.trainer import Trainer
+from interpretable_ssl.classifier_trainer import Trainer
 import interpretable_ssl.utils as utils
 from interpretable_ssl.immune.dataset import ImmuneDataset
 from pathlib import Path

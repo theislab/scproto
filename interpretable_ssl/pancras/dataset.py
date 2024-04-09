@@ -1,6 +1,6 @@
 from pathlib import Path
 from interpretable_ssl.pancras.label_encoder import *
-from interpretable_ssl.single_cell_dataset import SingleCellDataset
+from interpretable_ssl.dataset import SingleCellDataset
 
 
 

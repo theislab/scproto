@@ -8,7 +8,7 @@ import random
 
 class SingleCellDataset(Dataset):
 
-    def __init__(self, name, adata=None, use_pca=False):
+    def __init__(self, name, adata=None, use_pca=False, self_supervised=False):
         self.device = utils.get_device()
         self.name = name
         if not adata:
@@ -21,6 +21,7 @@ class SingleCellDataset(Dataset):
         # self.y = self.get_y()
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
+        self.self_supervised = self_supervised
 
     def __str__(self) -> str:
         return self.name
@@ -46,10 +47,19 @@ class SingleCellDataset(Dataset):
         return len(self.adata)
 
     def __getitem__(self, idx):
-        x = self.get_x(idx).squeeze(0)
-        y = self.get_y(idx).squeeze(0)
-        return x, y
+        if self.self_supervised:
+            return self.get_self_supervised_item(idx)
+        else:
+            x = self.get_x(idx).squeeze(0)
+            y = self.get_y(idx).squeeze(0)
+            return x, y
 
+    def get_self_supervised_item(self, idx):
+        x1 = self.get_x(idx).squeeze(0)
+        cell_type = self.adata[idx].obs.cell_type
+        x2 = self.augment(cell_type).squeeze(0)
+        return x1, x2
+    
     def get_train_test(self):
         return random_split(
             self, [0.7, 0.3], generator=torch.Generator().manual_seed(42)
@@ -65,3 +75,14 @@ class SingleCellDataset(Dataset):
     def get_y(self, i):
         y = self.le.transform(self.adata[i].obs["cell_type"])
         return torch.tensor(y, device=self.device)
+
+    def augment(self, cell_type):
+        if len(cell_type) > 1:
+            res = [self.augment(cell) for cell in cell_type]
+            return torch.tensor(res, device = self.device)
+        adata = self.adata
+        all_cells = adata[adata.obs.cell_type == cell_type]
+        rand_idx = random.randint(0, len(all_cells) - 1)
+        x = all_cells[rand_idx].X.toarray()
+        return torch.tensor(x, device = self.device)
+        

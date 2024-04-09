@@ -1,4 +1,4 @@
-from interpretable_ssl.single_cell_dataset import SingleCellDataset
+from interpretable_ssl.dataset import SingleCellDataset
 from pathlib import Path
 from interpretable_ssl.pbmc.label_encoder import load_label_encoder
 

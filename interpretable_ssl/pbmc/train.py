@@ -1,4 +1,4 @@
-from interpretable_ssl.trainer import Trainer
+from interpretable_ssl.classifier_trainer import Trainer
 from interpretable_ssl.pbmc.dataset import PBMCDataset
 import interpretable_ssl.utils as utils
 
