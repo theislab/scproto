@@ -4,7 +4,7 @@ import wandb
 from interpretable_ssl.models.autoencoder import vae_loss, VariationalAutoencoder
 from torcheval.metrics.functional import multiclass_f1_score
 
-from torchvision import datasets, transforms
+# from torchvision import datasets, transforms
 import torch.optim as optim
 import time
 from tqdm.auto import tqdm
@@ -163,28 +163,28 @@ def get_home():
     return "/home/icb/fatemehs.hashemig"
 
 
-def load_mnist():
-    # load data
-    batch_size = 128
-    transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
+# def load_mnist():
+#     # load data
+#     batch_size = 128
+#     transform = transforms.Compose(
+#         [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+#     )
 
-    home = get_home()
-    data_path = f"{home}/data"
-    train = datasets.MNIST(data_path, train=True, transform=transform)
-    test = datasets.MNIST(data_path, train=False, transform=transform)
-    train_kwargs = {"batch_size": batch_size}
-    test_kwargs = {"batch_size": batch_size}
+#     home = get_home()
+#     data_path = f"{home}/data"
+#     train = datasets.MNIST(data_path, train=True, transform=transform)
+#     test = datasets.MNIST(data_path, train=False, transform=transform)
+#     train_kwargs = {"batch_size": batch_size}
+#     test_kwargs = {"batch_size": batch_size}
 
-    use_cuda = torch.cuda.is_available()
-    if use_cuda:
-        cuda_kwargs = {"num_workers": 1, "pin_memory": True, "shuffle": True}
-        train_kwargs.update(cuda_kwargs)
-        test_kwargs.update(cuda_kwargs)
-    train_loader = torch.utils.data.DataLoader(train, **train_kwargs)
-    test_loader = torch.utils.data.DataLoader(test, **test_kwargs)
-    return train_loader, test_loader
+#     use_cuda = torch.cuda.is_available()
+#     if use_cuda:
+#         cuda_kwargs = {"num_workers": 1, "pin_memory": True, "shuffle": True}
+#         train_kwargs.update(cuda_kwargs)
+#         test_kwargs.update(cuda_kwargs)
+#     train_loader = torch.utils.data.DataLoader(train, **train_kwargs)
+#     test_loader = torch.utils.data.DataLoader(test, **test_kwargs)
+#     return train_loader, test_loader
 
 
 def add_prefix_key(dict, prefix):
