@@ -1,25 +1,19 @@
-from interpretable_ssl.classifier_trainer import Trainer
+from interpretable_ssl.trainers.trainer import Trainer
 import interpretable_ssl.utils as utils
 from interpretable_ssl.immune.dataset import ImmuneDataset
 from pathlib import Path
+
 class ImmuneTrainer(Trainer):
-    def __init__(self, partially_train_ratio=None, split_study=False) -> None:
+    def __init__(self, partially_train_ratio=0.5, self_supervised=False, split_study=True) -> None:
+        super().__init__(partially_train_ratio, self_supervised)
         self.split_study = split_study
-        super().__init__(partially_train_ratio)
-        self.batch_size = 32
+        self.batch_size = 256
         
-        # # self.latent_dims = 16
-        self.hidden_dim = 128
+        self.latent_dims = 8
+        self.hidden_dim = 32
         self.num_prototypes = 32
+        self.epochs = 300
         print(f'training with number of prototypes : {self.get_model_name()}')
         
     def get_dataset(self):
         return ImmuneDataset()
-    
-    def get_model_path(self):
-        name = self.get_model_name()
-        if self.split_study:
-            name = 'split-study_' + name
-        save_dir = utils.get_model_dir() + '/immune/'
-        Path.mkdir(Path(save_dir), exist_ok=True)
-        return save_dir + name
