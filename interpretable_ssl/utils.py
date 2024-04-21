@@ -2,6 +2,7 @@ import torch
 from sklearn.preprocessing import LabelEncoder
 import pickle as pkl
 from torch.utils.data import random_split
+import scanpy as sc
 
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,3 +38,11 @@ def get_model_dir():
 def sample_dataset(dataset, sample_ratio):
     sample, _ = random_split(dataset, [sample_ratio, 1-sample_ratio], generator=torch.Generator().manual_seed(42))
     return sample
+
+def plot_umap(adata, rep):
+    sc.pp.neighbors(adata, use_rep=rep)
+    sc.tl.umap(adata)
+    sc.pl.umap(adata, color=['cell_type'])
+
+def tensor_to_numpy(tensor):
+    return tensor.detach().cpu().numpy()
