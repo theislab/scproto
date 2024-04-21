@@ -8,7 +8,7 @@ import random
 
 class SingleCellDataset(Dataset):
 
-    def __init__(self, name, adata=None, use_pca=False, self_supervised=False):
+    def __init__(self, name, adata=None, use_pca=False, self_supervised=False, multiple_augment_cnt=None):
         self.device = utils.get_device()
         self.name = name
         if not adata:
@@ -22,7 +22,13 @@ class SingleCellDataset(Dataset):
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
         self.self_supervised = self_supervised
+        self.multiple_augment_cnt = multiple_augment_cnt
 
+    def set_adata(self, adata):
+        self.adata = adata
+        self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
+        self.x_dim = self.adata[0].X.shape[1]
+    
     def __str__(self) -> str:
         return self.name
 
@@ -57,7 +63,12 @@ class SingleCellDataset(Dataset):
     def get_self_supervised_item(self, idx):
         x1 = self.get_x(idx).squeeze(0)
         cell_type = self.adata[idx].obs.cell_type
-        x2 = self.augment(cell_type).squeeze(0)
+        if self.multiple_augment_cnt:
+            x2 = [self.augment(cell_type).squeeze(0) for _ in range(self.multiple_augment_cnt)]
+            x2 = torch.stack(x2)
+            x2 = x2.to(self.device)
+        else:
+            x2 = self.augment(cell_type).squeeze(0)
         return x1, x2
     
     def get_train_test(self):
@@ -72,6 +83,10 @@ class SingleCellDataset(Dataset):
             x = self.adata[i].X.toarray()
         return torch.tensor(x, device=self.device)
 
+    def get_x(self):
+        x = self.adata.X.toarray()
+        return torch.tensor(x, device=self.device)
+    
     def get_y(self, i):
         y = self.le.transform(self.adata[i].obs["cell_type"])
         return torch.tensor(y, device=self.device)
@@ -80,6 +95,9 @@ class SingleCellDataset(Dataset):
         if len(cell_type) > 1:
             res = [self.augment(cell) for cell in cell_type]
             return torch.tensor(res, device = self.device)
+        if type(cell_type) != str:
+            
+            cell_type = cell_type.iloc[0]
         adata = self.adata
         all_cells = adata[adata.obs.cell_type == cell_type]
         rand_idx = random.randint(0, len(all_cells) - 1)
