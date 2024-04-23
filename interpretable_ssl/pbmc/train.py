@@ -1,8 +1,8 @@
-from interpretable_ssl.classifier_trainer import Trainer
+from interpretable_ssl.trainers.classifier_trainer import ClassifierTrainer
 from interpretable_ssl.pbmc.dataset import PBMCDataset
 import interpretable_ssl.utils as utils
 
-class PBMCTrainer(Trainer):
+class PBMCTrainer(ClassifierTrainer):
     def get_dataset(self):
         return PBMCDataset()
     def get_model_path(self):
