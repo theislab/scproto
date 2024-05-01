@@ -187,11 +187,6 @@ def get_home():
 #     return train_loader, test_loader
 
 
-def add_prefix_key(dict, prefix):
-    new_dict = {}
-    for key in dict:
-        new_dict[f"{prefix}_{key}"] = dict[key]
-    return new_dict
 
 
 def main():
@@ -239,10 +234,10 @@ def main():
     st = time.time()
     for epoch in tqdm(range(epochs)):
         train_loss = train_step(model, train_loader, optimizer, device)
-        train_loss_dict = add_prefix_key(train_loss, "train")
+        train_loss_dict = utils.add_prefix_key(train_loss, "train")
         
         test_loss = test_step(test_loader, model, device)
-        test_loss_dict = add_prefix_key(test_loss, "test")
+        test_loss_dict = utils.add_prefix_key(test_loss, "test")
 
         train_loss_dict.update(test_loss_dict)
 
