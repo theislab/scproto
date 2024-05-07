@@ -5,6 +5,8 @@ import interpretable_ssl.immune.trainer as immune_trainer
 import interpretable_ssl.pbmc3k.trainer as pbmc3k_trainer
 
 from interpretable_ssl.trainers.scpoli_trainer import ScpoliTrainer
+from interpretable_ssl.trainers.scpoli_cvae import CvaeTrainer
+
 # def pancreas():
 #     trainer = pancras_train.PancrasTrainer(split_study=True)
 #     trainer.train()
@@ -21,6 +23,8 @@ def pbmc3k_ssl():
     trainer = pbmc3k_trainer.PBMC3kSSLTrainer()
     trainer.train()
     
-if __name__ == "__main__":
-    print('add scpoli_model + try to learn everything')
+def prototype_scpoli():
     ScpoliTrainer().train(100)
+if __name__ == "__main__":
+    print('train only scpoli cvae')
+    CvaeTrainer().train(100)
