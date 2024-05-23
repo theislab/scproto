@@ -1,12 +1,7 @@
 from interpretable_ssl.models.prototype_model import PrototypeLoss
 import torch
 
-def optimize_model(x1, x2, model, optimizer, overal_loss):
-    # 1. Forward pass
-    # 2. Calculate loss
-    batch_loss = model(x1, x2)
-    overal_loss += batch_loss
-
+def optimize_model(batch_loss: PrototypeLoss, optimizer):
     # 3. Optimizer zero grad
     optimizer.zero_grad()
 
@@ -17,8 +12,26 @@ def optimize_model(x1, x2, model, optimizer, overal_loss):
 
     # 5. Optimizer step
     optimizer.step()
-    return overal_loss
     
+# def optimize_ssl_model(x1, x2, model, optimizer, overal_loss):
+#     # 1. Forward pass
+#     # 2. Calculate loss
+#     batch_loss = model(x1, x2)
+#     overal_loss += batch_loss
+
+#     # 3. Optimizer zero grad
+#     optimizer.zero_grad()
+
+#     # 4. Loss backward
+#     batch_loss.overal.backward()
+
+#     # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # or some other value
+
+#     # 5. Optimizer step
+#     optimizer.step()
+#     return overal_loss
+    
+# TODO: rename to ssl_train_step. add and refactpor normal train_step
 def train_step(model, data_loader, optimizer, data_loader_size=None):
 
     overal_loss = PrototypeLoss()
@@ -30,7 +43,9 @@ def train_step(model, data_loader, optimizer, data_loader_size=None):
         #     for x2_item in x2:
         #         optimize_model(x1, x2_item, model, optimizer, overal_loss)
         # else:
-        overal_loss = optimize_model(x1, x2, model, optimizer, overal_loss)
+        batch_loss = model(x1, x2)
+        overal_loss += batch_loss
+        optimize_model(batch_loss, optimizer)
 
     if not data_loader_size:
         data_loader_size = len(data_loader)
@@ -55,3 +70,5 @@ def test_step(model, data_loader, data_loader_size=None):
             data_loader_size = len(data_loader)
         test_loss.normalize(data_loader_size)
     return test_loss
+
+
