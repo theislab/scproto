@@ -7,7 +7,7 @@ def get_label_encoder_path():
     
 class PBMC3kDataset(SingleCellDataset):
     
-    def __init__(self, name, adata=None, use_pca=False, self_supervised=False):
+    def __init__(self, adata=None, use_pca=False, self_supervised=False):
         super().__init__('pbmc3k', adata, use_pca, self_supervised)
         
     def get_data_path(self):

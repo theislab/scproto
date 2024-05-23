@@ -10,6 +10,23 @@ import torch.nn.functional as F
 import interpretable_ssl.pancras.dataset as dataset
 import interpretable_ssl.utils as utils
 
+class PrototypeVAE:
+
+    def get_latent_dims(self):
+        pass
+
+    def encode(self, x):
+        pass
+
+    def decode(self, z):
+        pass
+
+    def get_kl(self):
+        pass
+    
+    def calculate_loss(self, x):
+        pass
+    
 class VariationalEncoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, latent_dims, use_bn=True):
         super(VariationalEncoder, self).__init__()
@@ -54,7 +71,7 @@ class Decoder(nn.Module):
         return z
 
 
-class VariationalAutoencoder(nn.Module):
+class VariationalAutoencoder(nn.Module, PrototypeVAE):
     def __init__(self, input_dim, hidden_dim, latent_dims):
         super(VariationalAutoencoder, self).__init__()
         self.input_dim, self.hidden_dim, self.latent_dims = (
@@ -69,9 +86,22 @@ class VariationalAutoencoder(nn.Module):
         z = self.encoder(x)
         return self.decoder(z)
 
+    def get_latent_dims(self):
+        return self.latent_dims
 
+    def encode(self, x):
+        return self.encoder(x)
 
+    def decode(self, z):
+        return self.decoder(z)
 
+    def get_kl(self):
+        return self.encoder.kl
+
+    def calculate_loss(self, x):
+        z = self.encoder(x)
+        x_hat = self.decoder(z)
+        return vae_loss(x, x_hat, self.encoder.kl)
 
 
 def vae_loss(x, x_hat, kl):
