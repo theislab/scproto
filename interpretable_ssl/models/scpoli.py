@@ -27,6 +27,7 @@ def scpoli_loss(model, scpoli_batch, calc_alpha_coeff=0.5):
         cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
         return cvae_loss, z
     
+
 class PrototypeScpoli(nn.Module):
     def __init__(
         self, adata, latent_dim, num_prototypes, head
@@ -66,6 +67,49 @@ class PrototypeScpoli(nn.Module):
         return batch_loss
     def get_representation(self, adata):
         return self.scpoli.get_latent(adata, mean=True)
+    
+    def get_prototypes(self):
+        return self.prototype_head.prototype_vectors
+    
+    def decode_prototypes(self, batch_embeddings):
+        prot_cells, _ = self.scpoli_model.decoder(self.get_prototypes(), batch_embeddings)
+        return prot_cells.detach().numpy()
+    
+    def find_prototypes_closest_cell_idx(self, cell_embeddings):
+        dist = torch.cdist(self.get_prototypes(), torch.tensor(cell_embeddings))
+        return dist.argmin(dim=1)
+        
+    def calc_batch_embedding(self, inp):
+        batch = inp['batch']
+        batch_embeddings = torch.hstack([self.scpoli_model.embeddings[i](batch[:, i]) for i in range(batch.shape[1])])
+        return batch_embeddings
+
+    def get_closest_cell_batch_embedding(self, train_adata):
+        cell_embeddings = self.get_representation(train_adata)
+        closest_cell_idx = self.find_prototypes_closest_cell_idx(cell_embeddings)
+        closest_cells = train_adata[closest_cell_idx.numpy()]
+        loader = generate_scpoli_dataloder(closest_cells, self.scpoli_model)
+        batch_embeddings = self.calc_batch_embedding(next(iter(loader)))
+        return batch_embeddings
+        
+
+    def get_all_batch_embeddings(self):
+        all_batches = range(len(self.scpoli_model.condition_encoders['study']))
+        inp = {'batch':torch.tensor([i for i in all_batches]).reshape(-1, 1)}
+        return self.calc_batch_embedding(inp)
+    
+    
+    def decode_prototypes_using_closest_cell(self, train_adata):
+        closest_cell_batch_embedding = self.get_closest_cell_batch_embedding(train_adata)
+        return self.decode_prototypes(closest_cell_batch_embedding)
+    
+    def decode_prototypes_using_all_batch(self):
+        all_batch_embeddings = self.get_all_batch_embeddings()
+        
+        cells = [self.decode_prototypes(batch_emb.reshape(1, -1).repeat(16, 1)) for batch_emb in all_batch_embeddings]
+        cells = torch.tensor(cells)
+        cells = cells.mean(dim=0)
+        return cells
     
 class LinearPrototypeScpoli(PrototypeScpoli):
     def __init__(self, adata, latent_dim, num_prototypes, head) -> None:
