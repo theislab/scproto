@@ -13,7 +13,9 @@ import torch
 
 
 class Trainer:
-    def __init__(self, partially_train_ratio=None, self_supervised=False, epochs=100) -> None:
+    def __init__(
+        self, partially_train_ratio=None, self_supervised=False
+    ) -> None:
         self.num_prototypes = 8
         self.hidden_dim, self.latent_dims = 64, 8
         self.batch_size = 64
@@ -27,7 +29,11 @@ class Trainer:
 
         self.partially_train_ratio = partially_train_ratio
         self.description = None
-        self.epochs = epochs
+        self.experiment_name = None
+    
+    def get_optimizer(self, model):
+        return optim.Adam(model.parameters(), lr=0.0005)
+    
     def load_model(self):
         model = self.get_model()
         path = self.get_model_path()
@@ -39,6 +45,8 @@ class Trainer:
 
     def get_model_name(self):
         base = f"num-prot-{self.num_prototypes}_hidden-{self.hidden_dim}_bs-{self.batch_size}"
+        if self.experiment_name: 
+            base = self.experiment_name + '-' + base
         if self.self_supervised:
             base = f"ssl-{base}"
         if self.partially_train_ratio:
@@ -112,7 +120,37 @@ class Trainer:
         else:
             return self.classification_test_step(model, test_loader)
 
-    def train(self):
+    def init_wandb(self, model_path, train_size, test_size):
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="interpretable-ssl",
+            # track hyperparameters and run metadata
+            config={
+                "num_prototypes": self.num_prototypes,
+                "hidden dim": self.hidden_dim,
+                "latent_dims": self.latent_dims,
+                "device": self.device,
+                "model path": model_path,
+                "dataset": self.dataset,
+                "partially train ratio": self.partially_train_ratio,
+                "train size": train_size,
+                "test size": test_size,
+                "batch size": self.batch_size,
+                "description": self.description,
+                "self-supervised": self.self_supervised,
+            },
+        )
+
+    def log_loss(self, train_loss, test_loss):
+        train_loss_dict = utils.add_prefix_key(train_loss.__dict__, "train")
+
+        test_loss_dict = utils.add_prefix_key(test_loss.__dict__, "test")
+
+        train_loss_dict.update(test_loss_dict)
+
+        wandb.log(train_loss_dict)
+
+    def train(self, epochs = 100):
 
         # load data
         train_loader, test_loader = self.get_train_test_loader()
@@ -125,45 +163,16 @@ class Trainer:
         model_path = self.get_model_path()
 
         # init wandb
-        wandb.init(
-            # set the wandb project where this run will be logged
-            project="interpretable-ssl",
-            # track hyperparameters and run metadata
-            config={
-                "num_prototypes": self.num_prototypes,
-                "hidden dim": self.hidden_dim,
-                "latent_dims": self.latent_dims,
-                "epochs": self.epochs,
-                "device": self.device,
-                "model path": model_path,
-                "dataset": self.dataset,
-                "partially train ratio": self.partially_train_ratio,
-                "train size": len(train_loader.dataset),
-                "test size": len(test_loader.dataset),
-                "batch size": self.batch_size,
-                "description": self.description,
-                "self-supervised": self.self_supervised,
-            },
-        )
+        self.init_wandb(model_path, len(train_loader.dataset), len(test_loader.dataset))
 
         # train loop
         best_test_loss = sys.maxsize
         print("start training")
-        for epoch in tqdm(range(self.epochs)):
+        for epoch in tqdm(range(epochs)):
             train_loss = self.train_step(model, train_loader, optimizer)
-            train_loss_dict = prototype_classifier.add_prefix_key(
-                train_loss.__dict__, "train"
-            )
-
             test_loss = self.test_step(model, test_loader)
-            test_loss_dict = prototype_classifier.add_prefix_key(
-                test_loss.__dict__, "test"
-            )
-
-            train_loss_dict.update(test_loss_dict)
-
-            wandb.log(train_loss_dict)
-            if test_loss.loss < best_test_loss:
+            self.log_loss(train_loss, test_loss)
+            if test_loss.overal < best_test_loss:
                 utils.save_model_checkpoint(model, optimizer, epoch, model_path)
 
     def get_ssl_representations(self):

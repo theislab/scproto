@@ -109,7 +109,7 @@ class PrototypeLoss:
 def train_step(model: ProtClassifier, data_loader, optimizer, device):
     model.to(device)
 
-    overal_loss = PrototypeLoss(model.num_classes)
+    overal_loss = PrototypeLoss()
 
     for x, y in data_loader:
         # 1. Forward pass
