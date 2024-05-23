@@ -83,7 +83,7 @@ class SingleCellDataset(Dataset):
             x = self.adata[i].X.toarray()
         return torch.tensor(x, device=self.device)
 
-    def get_x(self):
+    def get_x_all(self):
         x = self.adata.X.toarray()
         return torch.tensor(x, device=self.device)
     
