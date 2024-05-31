@@ -81,6 +81,8 @@ class ScpoliTrainer(Trainer):
             self.log_loss(train_loss, val_loss)
             if self.to_save(val_loss):
                 utils.save_model_checkpoint(model, optimizer, epoch, model_path)
+                
+        return train_loss.overal, self.best_val_loss
 
     def load_model(self):
 

@@ -41,6 +41,7 @@ class PrototypeScpoli(nn.Module):
         # TO DO
         self.calc_alpha_coeff = 0.5
         self.device = utils.get_device()
+        # self.num_prototypes = num_prototypes
 
     def to_device(self, scpoli_batch):
         return to_device(scpoli_batch, self.device)
@@ -106,7 +107,7 @@ class PrototypeScpoli(nn.Module):
     def decode_prototypes_using_all_batch(self):
         all_batch_embeddings = self.get_all_batch_embeddings()
         
-        cells = [self.decode_prototypes(batch_emb.reshape(1, -1).repeat(16, 1)) for batch_emb in all_batch_embeddings]
+        cells = [self.decode_prototypes(batch_emb.reshape(1, -1).repeat(self.num_prototypes, 1)) for batch_emb in all_batch_embeddings]
         cells = torch.tensor(cells)
         cells = cells.mean(dim=0)
         return cells
@@ -134,7 +135,7 @@ class BarlowPrototypeScpoli(PrototypeScpoli):
         self, adata, latent_dim, num_prototypes
     ) -> None:
         
-        projection_sizes, lambd = [num_prototypes, 32, 32, 32], 3.9e-3
+        projection_sizes, lambd = [num_prototypes, 16, 16, 16], 3.9e-3
         barlow_model = BarlowProjector(projection_sizes, lambd)
         super().__init__(adata, latent_dim, num_prototypes, barlow_model)
 
@@ -147,7 +148,9 @@ class BarlowScpoli(nn.Module):
         super().__init__()
         self.scpoli = get_scpoli(adata, latent_dim)
         self.cvae = self.scpoli.model
-        projection_sizes, lambd = [latent_dim, 32, 32, 32], 3.9e-3
+        # projection_sizes, lambd = [latent_dim, 32, 32, 32], 3.9e-3
+        projection_sizes, lambd = [latent_dim, 16, 16, 16], 3.9e-3
+
         self.barlow = BarlowProjector(projection_sizes, lambd)
         self.device = utils.get_device()
     

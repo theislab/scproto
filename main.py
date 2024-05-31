@@ -9,7 +9,8 @@ from interpretable_ssl.trainers.scpoli_cvae import CvaeTrainer
 # def pancreas():
 #     trainer = pancras_train.PancrasTrainer(split_study=True)
 #     trainer.train()
-    
+from interpretable_ssl.change_prototype_count import *
+
 def immune_ssl():
     trainer = immune_trainer.ImmuneTrainer(self_supervised=True)
     trainer.train()
@@ -36,8 +37,10 @@ def linear_scpoli():
 def barlow_scpoli():
     print('running barlow with scpoli cvae as encoder')
     BarlowTrainer().train(100)
+    
 if __name__ == "__main__":
     # barlow_scpoli()
     # linear_scpoli()
     # ScpoliOriginal().train()
-    prototype_scpoli()
+    # prototype_scpoli()
+    train_using_diffrent_prototypes()
