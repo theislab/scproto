@@ -10,6 +10,7 @@ from interpretable_ssl.trainers.scpoli_cvae import CvaeTrainer
 #     trainer = pancras_train.PancrasTrainer(split_study=True)
 #     trainer.train()
 from interpretable_ssl.change_prototype_count import *
+from interpretable_ssl.runs.scpoli_hlca import *
 
 def immune_ssl():
     trainer = immune_trainer.ImmuneTrainer(self_supervised=True)
@@ -43,4 +44,5 @@ if __name__ == "__main__":
     # linear_scpoli()
     # ScpoliOriginal().train()
     # prototype_scpoli()
-    train_using_diffrent_prototypes()
+    # train_using_diffrent_prototypes()
+    train_hlca_scpoli_prot_barlow()

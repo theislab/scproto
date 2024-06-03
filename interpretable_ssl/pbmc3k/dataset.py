@@ -1,4 +1,4 @@
-from interpretable_ssl.dataset import SingleCellDataset
+from interpretable_ssl.datasets.dataset import SingleCellDataset
 from pathlib import Path
 import pickle as pkl
 

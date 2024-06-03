@@ -4,7 +4,7 @@ import wandb
 from tqdm.auto import tqdm
 import interpretable_ssl.models.prototype_classifier as prototype_classifier
 from interpretable_ssl.models.prototype_classifier import ProtClassifier
-from interpretable_ssl.dataset import SingleCellDataset
+from interpretable_ssl.datasets.dataset import SingleCellDataset
 from torch.utils.data import DataLoader
 from pathlib import Path
 import sys
@@ -14,14 +14,17 @@ import torch
 
 class Trainer:
     def __init__(
-        self, partially_train_ratio=None, self_supervised=False
+        self, partially_train_ratio=None, self_supervised=False, dataset=None
     ) -> None:
         self.num_prototypes = 8
         self.hidden_dim, self.latent_dims = 64, 8
         self.batch_size = 64
 
         self.device = utils.get_device()
-        self.dataset = self.get_dataset()
+        if dataset:
+            self.dataset = dataset
+        else:
+            self.dataset = self.get_dataset()
         self.self_supervised = self_supervised
         self.dataset.self_supervised = self_supervised
 

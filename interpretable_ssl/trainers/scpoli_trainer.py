@@ -5,11 +5,12 @@ from interpretable_ssl.immune.dataset import ImmuneDataset
 from interpretable_ssl.train_utils import optimize_model
 import sys
 from interpretable_ssl.evaluation.visualization import plot_umap
+from torch.profiler import profile, record_function, ProfilerActivity
 
 
 class ScpoliTrainer(Trainer):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, dataset=None) -> None:
+        super().__init__(dataset=dataset)
         
         self.latent_dims = 8
         self.num_prototypes = 16
@@ -76,12 +77,14 @@ class ScpoliTrainer(Trainer):
         self.best_val_loss = sys.maxsize
 
         for epoch in range(epochs):
-            train_loss = self.train_step(model, train_loader, optimizer)
-            val_loss = self.test_step(model, val_loader)
-            self.log_loss(train_loss, val_loss)
-            if self.to_save(val_loss):
-                utils.save_model_checkpoint(model, optimizer, epoch, model_path)
-                
+            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
+
+                train_loss = self.train_step(model, train_loader, optimizer)
+                val_loss = self.test_step(model, val_loader)
+                self.log_loss(train_loss, val_loss)
+                if self.to_save(val_loss):
+                    utils.save_model_checkpoint(model, optimizer, epoch, model_path)
+                prof.export_chrome_trace("trace.json")
         return train_loss.overal, self.best_val_loss
 
     def load_model(self):
