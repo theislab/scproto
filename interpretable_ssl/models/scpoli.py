@@ -1,13 +1,15 @@
-from interpretable_ssl.models.autoencoder import PrototypeVAE
-from interpretable_ssl.models.prototype_model import *
+from interpretable_ssl.models.prototype_base import *
 
-from interpretable_ssl.models.prototype_barlow import BarlowProjector
+from interpretable_ssl.models.barlow_projector import BarlowProjector
 from scarches.models.scpoli import scPoli
 import scarches.trainers.scpoli._utils as scpoli_utils
 
 from copy import deepcopy
 import random
 from interpretable_ssl import train_utils
+from interpretable_ssl.loss_manager import PrototypeLoss
+from interpretable_ssl import utils
+
 
 def get_scpoli(adata, latent_dim):
     condition_key = "study"
@@ -35,7 +37,7 @@ class PrototypeScpoli(nn.Module):
         super().__init__()
         self.scpoli = get_scpoli(adata, latent_dim)
         self.scpoli_model = self.scpoli.model
-        self.prototype_head = PrototypeBase(num_prototypes, latent_dim)
+        self.prototype_head = self.get_prototype_head(adata, num_prototypes, latent_dim)
         self.head = head
 
         # TO DO
@@ -43,6 +45,11 @@ class PrototypeScpoli(nn.Module):
         self.device = utils.get_device()
         # self.num_prototypes = num_prototypes
 
+    def get_prototype_head(self, adata, num_prototypes, latent_dim):
+        latent_space = self.get_representation(adata)
+        return  PrototypeBase(num_prototypes, latent_dim, latent_space)
+        
+        
     def to_device(self, scpoli_batch):
         return to_device(scpoli_batch, self.device)
 
@@ -65,6 +72,7 @@ class PrototypeScpoli(nn.Module):
 
         batch_loss = prot_loss1 + prot_loss2
         batch_loss.set_task_loss(head_loss)
+        batch_loss.set_repulsion(self.prototype_head.prototype_vectors)
         return batch_loss
     def get_representation(self, adata):
         return self.scpoli.get_latent(adata, mean=True)
@@ -204,10 +212,10 @@ def generate_scpoli_dataset(adata, scpoli_model):
         cell_type_encoder=scpoli_model.cell_type_encoder,
     )
     return train
-def generate_scpoli_dataloder(adata, scpoli_model, batch_size = 16):
+def generate_scpoli_dataloder(adata, scpoli_model, sampler = None, batch_size = 16):
     train = generate_scpoli_dataset(adata, scpoli_model)
     loader = torch.utils.data.DataLoader(
-        train, batch_size=batch_size, collate_fn=scpoli_utils.custom_collate, shuffle=True
+        train, batch_size=batch_size, collate_fn=scpoli_utils.custom_collate, sampler=sampler
     )
     return loader
 

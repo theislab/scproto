@@ -2,13 +2,11 @@ import interpretable_ssl.utils as utils
 import torch.optim as optim
 import wandb
 from tqdm.auto import tqdm
-import interpretable_ssl.models.prototype_classifier as prototype_classifier
-from interpretable_ssl.models.prototype_classifier import ProtClassifier
 from interpretable_ssl.datasets.dataset import SingleCellDataset
 from torch.utils.data import DataLoader
 from pathlib import Path
 import sys
-from interpretable_ssl.models import autoencoder, prototype_barlow
+from interpretable_ssl.models import barlow_projector
 import torch
 
 
@@ -26,7 +24,6 @@ class Trainer:
         else:
             self.dataset = self.get_dataset()
         self.self_supervised = self_supervised
-        self.dataset.self_supervised = self_supervised
 
         self.input_dim = self.dataset.x_dim
 
@@ -57,28 +54,7 @@ class Trainer:
         return base + ".pth"
 
     def get_model(self):
-        if self.self_supervised:
-            return self.get_self_supervised_model()
-        return self.get_classification_model()
-
-    def get_classification_model(self):
-        num_classes = self.dataset.num_classes
-
-        model = ProtClassifier(
-            num_prototypes=self.num_prototypes,
-            num_classes=num_classes,
-            input_dim=self.input_dim,
-            hidden_dim=self.hidden_dim,
-            latent_dims=self.latent_dims,
-        )
-        return model
-
-    def get_self_supervised_model(self):
-        vae = autoencoder.VariationalAutoencoder(
-            self.input_dim, self.hidden_dim, self.latent_dims
-        )
-        model = prototype_barlow.PrototypeBarlow(vae, self.num_prototypes)
-        return model
+        pass
 
     def get_model_path(self):
         name = self.get_model_name()
@@ -98,18 +74,16 @@ class Trainer:
         return train_loader, test_loader
 
     def ssl_train_step(self, model, train_loader, optimizer):
-        return prototype_barlow.train_step(model, train_loader, optimizer, self.device)
+        return barlow_projector.train_step(model, train_loader, optimizer, self.device)
 
     def ssl_test_step(self, model, test_loader):
-        return prototype_barlow.test_step(model, test_loader, self.device)
+        return barlow_projector.test_step(model, test_loader, self.device)
 
     def calssification_train_step(self, model, train_loader, optimizer):
-        return prototype_classifier.train_step(
-            model, train_loader, optimizer, self.device
-        )
+        pass
 
     def classification_test_step(self, model, test_loader):
-        return prototype_classifier.test_step(test_loader, model, self.device)
+        pass
 
     def train_step(self, model, train_loader, optimizer):
         if self.self_supervised:

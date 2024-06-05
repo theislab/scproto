@@ -3,6 +3,8 @@ from interpretable_ssl.pancras.label_encoder import *
 from interpretable_ssl.datasets.dataset import SingleCellDataset
 
 
+def get_label_encoder_path():
+    return "./data/pancras_label_encoder.pkl"
 
 class PancrasDataset(SingleCellDataset):
 

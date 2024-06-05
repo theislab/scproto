@@ -1,7 +1,7 @@
 import torch
 import requests
 from interpretable_ssl.models.autoencoder import *
-from interpretable_ssl.pancras.dataset import PancrasDataset
+from interpretable_ssl.datasets.pancreas import PancrasDataset
 from torch.utils.data import DataLoader
 from interpretable_ssl.models.prototype_classifier import ProtClassifier
 import pandas as pd
