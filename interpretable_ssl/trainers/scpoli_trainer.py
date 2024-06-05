@@ -1,17 +1,18 @@
 from interpretable_ssl.trainers.trainer import Trainer
 from interpretable_ssl.models.scpoli import *
 from sklearn.model_selection import train_test_split
-from interpretable_ssl.immune.dataset import ImmuneDataset
+from interpretable_ssl.datasets.immune import ImmuneDataset
 from interpretable_ssl.train_utils import optimize_model
 import sys
 from interpretable_ssl.evaluation.visualization import plot_umap
-from torch.profiler import profile, record_function, ProfilerActivity
-
+from interpretable_ssl.loss_manager import *
+from interpretable_ssl import utils
+from torch.utils.data import WeightedRandomSampler
 
 class ScpoliTrainer(Trainer):
     def __init__(self, dataset=None) -> None:
         super().__init__(dataset=dataset)
-        
+
         self.latent_dims = 8
         self.num_prototypes = 16
         self.experiment_name = "scpoli"
@@ -19,20 +20,26 @@ class ScpoliTrainer(Trainer):
         self.val_adata = None
         self.best_val_loss = sys.maxsize
         self.ref, self.query = self.dataset.get_train_test()
-
+        self.use_weighted_sampling = False
+        
+    def get_weighted_sampler(self, adata):
+        class_counts = adata.obs.encoded_cell_type.value_counts().values
+        class_weights = 1. / class_counts
+        weights = class_weights[adata.obs['encoded_cell_type']]     
+        return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        
     def split_train_test(self, ref):
         train_idx, val_idx = train_test_split(range(len(ref.adata)))
         train, val = ref.adata[train_idx], ref.adata[val_idx]
         return train, val
-    def get_dataset(self):
-        return ImmuneDataset()
-
-    def get_model(self, adata):
-        return BarlowPrototypeScpoli(adata, self.latent_dims, self.num_prototypes)
 
     def prepare_scpoli_data_splits(self, ref, scpoli_model):
         train_adata, val_adata = self.split_train_test(ref)
-        train_loader = generate_scpoli_dataloder(train_adata, scpoli_model)
+        if self.use_weighted_sampling:
+            sampler = self.get_weighted_sampler(train_adata)
+        else:
+            sampler = None
+        train_loader = generate_scpoli_dataloder(train_adata, scpoli_model, sampler)
         val_loader = generate_scpoli_dataloder(val_adata, scpoli_model)
         return train_adata, train_loader, val_adata, val_loader
 
@@ -47,7 +54,7 @@ class ScpoliTrainer(Trainer):
 
     def test_step(self, model, val_loader):
         return test_step(model, val_loader, self.val_adata)
-    
+
     def train(self, epochs):
         # prepare data (train, test)
         # define model
@@ -77,14 +84,12 @@ class ScpoliTrainer(Trainer):
         self.best_val_loss = sys.maxsize
 
         for epoch in range(epochs):
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
 
-                train_loss = self.train_step(model, train_loader, optimizer)
-                val_loss = self.test_step(model, val_loader)
-                self.log_loss(train_loss, val_loss)
-                if self.to_save(val_loss):
-                    utils.save_model_checkpoint(model, optimizer, epoch, model_path)
-                prof.export_chrome_trace("trace.json")
+            train_loss = self.train_step(model, train_loader, optimizer)
+            val_loss = self.test_step(model, val_loader)
+            self.log_loss(train_loss, val_loss)
+            if self.to_save(val_loss):
+                utils.save_model_checkpoint(model, optimizer, epoch, model_path)
         return train_loss.overal, self.best_val_loss
 
     def load_model(self):
@@ -103,7 +108,7 @@ class ScpoliTrainer(Trainer):
         # get latent representation of reference data
         data_latent_source = self.get_representation(model, self.ref.adata)
         self.ref.adata.obsm[f"{self.experiment_name}"] = data_latent_source
-        
+
         plot_umap(self.ref.adata, f"{self.experiment_name}")
 
     def get_query_model(self):
@@ -113,42 +118,19 @@ class ScpoliTrainer(Trainer):
             reference_model=model.scpoli,
             labeled_indices=[],
         )
-        scpoli_query.train(
-            n_epochs=50,
-            pretraining_epochs=40,
-            eta=10
-        )
+        scpoli_query.train(n_epochs=50, pretraining_epochs=40, eta=10)
         return scpoli_query
-    
+
     def get_query_latent(self):
         scpoli_query = self.get_query_model()
-        query_latent = scpoli_query.get_latent(
-            self.query.adata, 
-            mean=True
-        )
+        query_latent = scpoli_query.get_latent(self.query.adata, mean=True)
         return query_latent
-        
-class SslTrainer(ScpoliTrainer):
-    def __init__(self) -> None:
-        super().__init__()
 
-        self.experiment_name = "scpoli-ssl"
+
+class ScpoliProtBarlowTrainer(ScpoliTrainer):
 
     def get_model(self, adata):
-        return PrototypeScpoli(adata, self.latent_dims, self.num_prototypes)
-
-    def train_step(self, model, train_loader, optimizer):
-        return train_step(model, self.train_adata, train_loader, optimizer)
-
-    def test_step(self, model, val_loader):
-        return test_step(model, val_loader, self.val_adata)
-
-    def get_ssl_representations(self):
-        model = self.load_model()
-        model.to(self.device)
-        adata = self.dataset.adata
-        data = generate_scpoli_dataset(adata, model.scpoli_model)
-        return model.scpoli_model(data)
+        return BarlowPrototypeScpoli(adata, self.latent_dims, self.num_prototypes)
 
 
 class LinearTrainer(ScpoliTrainer):
@@ -180,7 +162,7 @@ class LinearTrainer(ScpoliTrainer):
         return test_loss
 
 
-class BarlowTrainer(SslTrainer):
+class BarlowTrainer(ScpoliTrainer):
     def __init__(self) -> None:
         print("running barlow-scpoli")
         super().__init__()
@@ -215,9 +197,9 @@ class ScpoliOriginal(ScpoliTrainer):
         )
         path = self.get_model_path()
         utils.save_model(self.scpoli_trainer.model, path)
-        
+
     def get_representation(self, model, adata):
         return self.scpoli_trainer.get_latent(adata, mean=True)
-    
+
     def get_model_name(self):
-        return f'original-scpoli-latent{self.latent_dims}.pth'
+        return f"original-scpoli-latent{self.latent_dims}.pth"

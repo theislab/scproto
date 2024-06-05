@@ -3,13 +3,14 @@
 # set training parameters
 # train loop
 
-from interpretable_ssl.immune.dataset import ImmuneDataset
+from interpretable_ssl.datasets.immune import ImmuneDataset
 from scarches.models.scpoli import scPoli
 from interpretable_ssl import utils
 from interpretable_ssl.trainers.scpoli_trainer import ScpoliTrainer
 import torch
 import wandb
 import sys
+
 class CvaeTrainer(ScpoliTrainer):
     def __init__(self) -> None:
         super().__init__()
