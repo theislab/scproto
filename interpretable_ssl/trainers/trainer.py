@@ -11,6 +11,7 @@ import torch
 from sklearn.model_selection import KFold
 import os
 
+
 class Trainer:
     def __init__(
         self, partially_train_ratio=None, self_supervised=False, dataset=None
@@ -34,22 +35,24 @@ class Trainer:
         self.fold = None
         self.ref, self.query = self.dataset.get_train_test()
         self.fine_tuning_epochs = 50
-        
+        # only works when using k fold cross val
+        self.train_study_index, self.test_study_index = None, None
+
     def evaluate_classification(self):
         pass
-    
+
     def get_ref_query_latent(self):
         pass
-    
-    
+
     def get_optimizer(self, model):
         return optim.Adam(model.parameters(), lr=0.0005)
 
     def load_model(self):
         model = self.get_model()
         path = self.get_model_path()
-        model.load_state_dict(torch.load(path)["model_state_dict"])
-        return model
+        checkpoint = torch.load(path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        return model, checkpoint["train_indices"], checkpoint["test_indices"]
 
     def get_dataset(self) -> SingleCellDataset:
         pass
@@ -75,8 +78,8 @@ class Trainer:
         name = self.get_model_name()
         save_dir = utils.get_model_dir() + f"/{self.dataset.name}/"
         if self.fold:
-            save_dir = f'{save_dir}/{name}/'
-            name = f'fold-{self.fold}'
+            save_dir = f"{save_dir}/{name}/"
+            name = f"fold-{self.fold}"
         Path.mkdir(Path(save_dir), exist_ok=True)
         return save_dir + name + ".pth"
 
@@ -138,22 +141,26 @@ class Trainer:
         )
 
     def train_kfold_cross_val(self, epochs, n_splits=5):
-        print('running kfold')
+        print("running kfold")
         study_ids = self.dataset.get_study_ids()
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         self.fold = 0
         for train_study_index, test_study_index in kf.split(study_ids):
+            self.train_study_index, self.test_study_index = (
+                train_study_index,
+                test_study_index,
+            )
             self.ref, self.query = self.dataset.get_fold_train_test(
                 train_study_index, test_study_index
             )
+
             self.fold += 1
             model_path = self.get_model_path()
             if os.path.exists(model_path):
-                print(model_path, ' exist')
+                print(model_path, " exist")
                 continue
-                
+
             self.train(epochs)
-            
 
     def log_loss(self, train_loss, test_loss):
 

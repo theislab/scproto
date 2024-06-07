@@ -8,6 +8,9 @@ from interpretable_ssl.evaluation.visualization import plot_umap
 from interpretable_ssl.loss_manager import *
 from interpretable_ssl import utils
 from torch.utils.data import WeightedRandomSampler
+from scarches.models.scpoli import scPoli
+import numpy as np
+
 
 class ScpoliTrainer(Trainer):
     def __init__(self, dataset=None) -> None:
@@ -19,15 +22,47 @@ class ScpoliTrainer(Trainer):
         self.train_adata = None
         self.val_adata = None
         self.best_val_loss = sys.maxsize
-        self.ref, self.query = self.dataset.get_train_test()
         self.use_weighted_sampling = False
-        
+
+    def reference_mapping(self, reference_model):
+        scpoli_query = scPoli.load_query_data(
+            adata=self.query.adata,
+            reference_model=reference_model,
+            labeled_indices=[],
+        )
+        scpoli_query.train(
+            n_epochs=self.fine_tuning_epochs, pretraining_epochs=40, eta=10
+        )
+        return scpoli_query
+
+    def get_ref_query_latent(self):
+        model = self.load_model()
+        self.get_model_ref_query_latent(model.scpoli)
+
+    def get_model_ref_query_latent(self, scpoli_model):
+
+        query_model = self.reference_mapping(scpoli_model)
+        query_latent = query_model.get_latent(self.query.adata, mean=True)
+        reference_latent = query_model.get_latent(self.ref.adata, mean=True)
+        return reference_latent, query_latent
+
     def get_weighted_sampler(self, adata):
-        class_counts = adata.obs.encoded_cell_type.value_counts().values
-        class_weights = 1. / class_counts
-        weights = class_weights[adata.obs['encoded_cell_type']]     
-        return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
-        
+        encoded_labels = adata.obs["encoded_cell_type"]
+        unique_labels = encoded_labels.unique()
+        label_to_index = {label: index for index, label in enumerate(unique_labels)}
+
+        mapped_labels = encoded_labels.map(label_to_index)
+        class_counts = mapped_labels.value_counts().values
+
+        class_weights = np.zeros_like(class_counts, dtype=float)
+        non_zero_mask = class_counts != 0
+        class_weights[non_zero_mask] = 1.0 / class_counts[non_zero_mask]
+
+        weights = class_weights[mapped_labels]
+        return WeightedRandomSampler(
+            weights, num_samples=len(weights), replacement=True
+        )
+
     def split_train_test(self, ref):
         train_idx, val_idx = train_test_split(range(len(ref.adata)))
         train, val = ref.adata[train_idx], ref.adata[val_idx]
@@ -64,7 +99,7 @@ class ScpoliTrainer(Trainer):
         #      calculate loss
         #      optimize
         #      log loss
-
+        print("running scpoli trainer class train")
         ref, query = self.ref, self.query
         model = self.get_model(ref.adata)
         model.to(self.device)
@@ -89,7 +124,14 @@ class ScpoliTrainer(Trainer):
             val_loss = self.test_step(model, val_loader)
             self.log_loss(train_loss, val_loss)
             if self.to_save(val_loss):
-                utils.save_model_checkpoint(model, optimizer, epoch, model_path)
+                utils.save_model_checkpoint(
+                    model,
+                    optimizer,
+                    epoch,
+                    model_path,
+                    self.train_study_index,
+                    self.test_study_index,
+                )
         return train_loss.overal, self.best_val_loss
 
     def load_model(self):
@@ -118,13 +160,16 @@ class ScpoliTrainer(Trainer):
             reference_model=model.scpoli,
             labeled_indices=[],
         )
-        scpoli_query.train(n_epochs=50, pretraining_epochs=40, eta=10)
         return scpoli_query
 
-    def get_query_latent(self):
+    def get_ref_query_latent(self):
         scpoli_query = self.get_query_model()
+        scpoli_query.train(n_epochs=self.fine_tuning_epochs, pretraining_epochs=40, eta=10)
+
         query_latent = scpoli_query.get_latent(self.query.adata, mean=True)
-        return query_latent
+        ref_latent = scpoli_query.get_latent(self.query.adata, mean=True)
+
+        return ref_latent, query_latent
 
 
 class ScpoliProtBarlowTrainer(ScpoliTrainer):
@@ -202,4 +247,4 @@ class ScpoliOriginal(ScpoliTrainer):
         return self.scpoli_trainer.get_latent(adata, mean=True)
 
     def get_model_name(self):
-        return f"original-scpoli-latent{self.latent_dims}.pth"
+        return f"original-scpoli-latent{self.latent_dims}"
