@@ -43,4 +43,5 @@ class ScviTrainer(Trainer):
         model.train(max_epochs=self.fine_tuning_epochs, use_gpu=(self.device == 'cuda'))
         query_latent = model.get_latent_representation(self.query.adata)
         ref_latent = model.get_latent_representation(self.ref.adata)
-        return ref_latent, query_latent
+        all_latent = model.get_latent_representation(self.dataset.adata)
+        return ref_latent, query_latent, all_latent

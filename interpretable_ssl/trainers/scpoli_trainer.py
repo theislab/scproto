@@ -35,10 +35,6 @@ class ScpoliTrainer(Trainer):
         )
         return scpoli_query
 
-    def get_ref_query_latent(self):
-        model = self.load_model()
-        self.get_model_ref_query_latent(model.scpoli)
-
     def get_model_ref_query_latent(self, scpoli_model):
 
         query_model = self.reference_mapping(scpoli_model)
@@ -167,9 +163,9 @@ class ScpoliTrainer(Trainer):
         scpoli_query.train(n_epochs=self.fine_tuning_epochs, pretraining_epochs=40, eta=10)
 
         query_latent = scpoli_query.get_latent(self.query.adata, mean=True)
-        ref_latent = scpoli_query.get_latent(self.query.adata, mean=True)
-
-        return ref_latent, query_latent
+        ref_latent = scpoli_query.get_latent(self.ref.adata, mean=True)
+        all_latent = scpoli_query.get_latent(self.dataset.adata, mean = True)
+        return ref_latent, query_latent, all_latent
 
 
 class ScpoliProtBarlowTrainer(ScpoliTrainer):

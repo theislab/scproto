@@ -10,8 +10,9 @@ from interpretable_ssl.models import barlow_projector
 import torch
 from sklearn.model_selection import KFold
 import os
-
-
+from copy import deepcopy
+from interpretable_ssl.evaluation.scib_metrics import *
+import pandas as pd
 class Trainer:
     def __init__(
         self, partially_train_ratio=None, self_supervised=False, dataset=None
@@ -140,28 +141,6 @@ class Trainer:
             },
         )
 
-    def train_kfold_cross_val(self, epochs, n_splits=5):
-        print("running kfold")
-        study_ids = self.dataset.get_study_ids()
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-        self.fold = 0
-        for train_study_index, test_study_index in kf.split(study_ids):
-            self.train_study_index, self.test_study_index = (
-                train_study_index,
-                test_study_index,
-            )
-            self.ref, self.query = self.dataset.get_fold_train_test(
-                train_study_index, test_study_index
-            )
-
-            self.fold += 1
-            model_path = self.get_model_path()
-            if os.path.exists(model_path):
-                print(model_path, " exist")
-                continue
-
-            self.train(epochs)
-
     def log_loss(self, train_loss, test_loss):
 
         train_loss_dict = utils.add_prefix_key(train_loss.__dict__, "train")
@@ -209,3 +188,58 @@ class Trainer:
             utils.tensor_to_numpy(prot_dist),
             utils.tensor_to_numpy(projections),
         )
+        
+    def get_kfold_obj(self, n_splits):
+        return KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    
+    def train_kfold_cross_val(self, epochs, n_splits=5):
+        print("running kfold")
+        study_ids = self.dataset.get_study_ids()
+        kf = self.get_kfold_obj(n_splits)
+        self.fold = 0
+        for train_study_index, test_study_index in kf.split(study_ids):
+            self.train_study_index, self.test_study_index = (
+                train_study_index,
+                test_study_index,
+            )
+            self.ref, self.query = self.dataset.get_fold_train_test(
+                train_study_index, test_study_index
+            )
+
+            self.fold += 1
+            model_path = self.get_model_path()
+            if os.path.exists(model_path):
+                print(model_path, " exist")
+                continue
+
+            self.train(epochs)
+            
+
+    def evaluate_kfold_models(self, n_splits=5):
+        study_ids = self.dataset.get_study_ids()
+        kf = self.get_kfold_obj(n_splits)
+        self.fold = 0
+
+        overall_df = pd.DataFrame()
+        
+        for train_study_index, test_study_index in kf.split(study_ids):
+            self.ref, self.query = self.dataset.get_fold_train_test(
+                train_study_index, test_study_index
+            )
+            self.fold += 1
+            print(f'Evaluating fold {self.fold}')
+            fold_df = self.scib_metrics()
+            
+            # Add the fold column to ref and query dataframes
+            fold_df['fold'] = self.fold
+            
+            # Append the fold dataframes to the overall dataframes
+            overall_df = overall_df.append(fold_df, ignore_index=True)
+
+        return overall_df
+
+
+    def scib_metrics(self):
+        _, _, latent = self.get_ref_query_latent()
+        df, _ = calculate_scib_metrics(self.dataset.adata, latent)
+        return df
