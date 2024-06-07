@@ -42,6 +42,7 @@ class SingleCellDataset(Dataset):
         self.x_dim = self.adata[0].X.shape[1]
         self.adata.obs['encoded_cell_type'] = self.le.transform(self.adata.obs.cell_type)
 
+    
     def __str__(self) -> str:
         return self.name
 
@@ -87,7 +88,27 @@ class SingleCellDataset(Dataset):
             x2 = self.augment(cell_type).squeeze(0)
         return x1, x2
 
+    def get_study_ids(self):
+        study_ids = self.adata.obs.study.unique() 
+        return study_ids
+    
+    def get_fold_train_test(self, train_study_index, test_study_index):
+        study_ids = self.get_study_ids()
+        train_studies = study_ids[train_study_index]
+        test_studies = study_ids[test_study_index]
+        train_idx = self.adata.obs.study.isin(train_studies)
+        test_idx = self.adata.obs.study.isin(test_studies)
+        
+        train, test = self.adata[train_idx], self.adata[test_idx]
+        train_ds, test_ds = deepcopy(self), deepcopy(self)
+        train_ds.set_adata(train)
+        test_ds.set_adata(test)
+        return train_ds, test_ds
+    
     def get_train_test(self):
+        pass
+    
+    def get_train_test_random(self):
         # return random_split(
         #     self, [0.7, 0.3], generator=torch.Generator().manual_seed(42)
         # )

@@ -14,11 +14,11 @@ def get_home():
 
 
 def save_model_checkpoint(model, opt, epoch, save_path):
+    print(f'saving model at {save_path}')
     torch.save(
         {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": opt.state_dict(),
         },
         save_path,
     )

@@ -8,7 +8,8 @@ from pathlib import Path
 import sys
 from interpretable_ssl.models import barlow_projector
 import torch
-
+from sklearn.model_selection import KFold
+import os
 
 class Trainer:
     def __init__(
@@ -30,10 +31,20 @@ class Trainer:
         self.partially_train_ratio = partially_train_ratio
         self.description = None
         self.experiment_name = None
+        self.fold = None
+        self.ref, self.query = self.dataset.get_train_test()
+        self.fine_tuning_epochs = 50
+        
+    def evaluate_classification(self):
+        pass
+    
+    def get_ref_query_latent(self):
+        pass
+    
     
     def get_optimizer(self, model):
         return optim.Adam(model.parameters(), lr=0.0005)
-    
+
     def load_model(self):
         model = self.get_model()
         path = self.get_model_path()
@@ -45,13 +56,17 @@ class Trainer:
 
     def get_model_name(self):
         base = f"num-prot-{self.num_prototypes}_hidden-{self.hidden_dim}_bs-{self.batch_size}"
-        if self.experiment_name: 
-            base = self.experiment_name + '-' + base
+
+        if self.experiment_name:
+            base = self.experiment_name + "-" + base
+
         if self.self_supervised:
             base = f"ssl-{base}"
+
         if self.partially_train_ratio:
-            return f"{base}_train-ratio-{self.partially_train_ratio}.pth"
-        return base + ".pth"
+            base = f"{base}_train-ratio-{self.partially_train_ratio}"
+
+        return base
 
     def get_model(self):
         pass
@@ -59,8 +74,11 @@ class Trainer:
     def get_model_path(self):
         name = self.get_model_name()
         save_dir = utils.get_model_dir() + f"/{self.dataset.name}/"
+        if self.fold:
+            save_dir = f'{save_dir}/{name}/'
+            name = f'fold-{self.fold}'
         Path.mkdir(Path(save_dir), exist_ok=True)
-        return save_dir + name
+        return save_dir + name + ".pth"
 
     def get_train_test_loader(self):
         train, test = self.dataset.get_train_test()
@@ -98,6 +116,7 @@ class Trainer:
             return self.classification_test_step(model, test_loader)
 
     def init_wandb(self, model_path, train_size, test_size):
+
         wandb.init(
             # set the wandb project where this run will be logged
             project="interpretable-ssl",
@@ -118,7 +137,26 @@ class Trainer:
             },
         )
 
+    def train_kfold_cross_val(self, epochs, n_splits=5):
+        print('running kfold')
+        study_ids = self.dataset.get_study_ids()
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        self.fold = 0
+        for train_study_index, test_study_index in kf.split(study_ids):
+            self.ref, self.query = self.dataset.get_fold_train_test(
+                train_study_index, test_study_index
+            )
+            self.fold += 1
+            model_path = self.get_model_path()
+            if os.path.exists(model_path):
+                print(model_path, ' exist')
+                continue
+                
+            self.train(epochs)
+            
+
     def log_loss(self, train_loss, test_loss):
+
         train_loss_dict = utils.add_prefix_key(train_loss.__dict__, "train")
 
         test_loss_dict = utils.add_prefix_key(test_loss.__dict__, "test")
@@ -127,7 +165,7 @@ class Trainer:
 
         wandb.log(train_loss_dict)
 
-    def train(self, epochs = 100):
+    def train(self, epochs=100):
 
         # load data
         train_loader, test_loader = self.get_train_test_loader()
