@@ -1,6 +1,8 @@
 from interpretable_ssl.loss_manager import PrototypeLoss
 import torch
 import wandb
+from interpretable_ssl.models.scpoli import *
+from interpretable_ssl.datasets.utils import *
 
 
 # Function to log gradient norms
@@ -83,3 +85,17 @@ def test_step(model, data_loader, data_loader_size=None):
             data_loader_size = len(data_loader)
         test_loss.normalize(data_loader_size)
     return test_loss
+
+
+def scpoli_train_step(model, train_adata, optimizer, batch_size):
+    train_loader = prepare_scpoli_dataloader(train_adata, model, batch_size, False)
+    augmented_loader = prepare_scpoli_dataloader(train_adata, model, batch_size, True)
+    return train_step(
+        model, zip(train_loader, augmented_loader), optimizer, len(train_adata)
+    )
+
+
+def scpoli_test_step(model, test_adata, batch_size):
+    test_loader = prepare_scpoli_dataloader(test_adata, model, batch_size, False)
+    augmented_loader = prepare_scpoli_dataloader(test_adata, model, batch_size, True)
+    return test_step(model, zip(test_loader, augmented_loader), len(test_adata))

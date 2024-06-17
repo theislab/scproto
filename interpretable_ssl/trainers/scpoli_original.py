@@ -16,6 +16,7 @@ class OriginalTrainer(ScpoliTrainer):
     def __init__(self, dataset=None) -> None:
         super().__init__(dataset=dataset)
         self.experiment_name = "original-scpoli"
+        self.model_name_version = 2
 
     def get_model(self, adata):
         condition_key = "study"
@@ -39,15 +40,13 @@ class OriginalTrainer(ScpoliTrainer):
         model_path = self.get_model_path()
         utils.save_model_checkpoint(
             model.model,
-            "",
             epochs,
             model_path,
-            self.train_study_index,
-            self.test_study_index,
         )
 
     def get_model_name(self):
-        return f"scpoli-original-latent_dim{self.latent_dims}"
+        name = f"scpoli-original-latent_dim{self.latent_dims}"
+        return self.append_batch(name)
 
     def load_model(self):
         model = self.get_model(self.ref.adata)

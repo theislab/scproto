@@ -2,10 +2,11 @@ from barlow_twins_pytorch.Twins.barlow import *
 import torch
 import torch
 import torch.nn as nn
+from interpretable_ssl.models.loss import *
 
-class BarlowProjector(nn.Module):
+class Projector(nn.Module):
     def __init__(self, projection_sizes, lambd, scale_factor=1) -> None:
-        super(BarlowProjector, self).__init__()
+        super(Projector, self).__init__()
         self.lambd = lambd
         self.scale_factor = scale_factor
         # projector
@@ -17,9 +18,14 @@ class BarlowProjector(nn.Module):
             layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
         self.projector = nn.Sequential(*layers)
+        
+        
+class BarlowProjector(Projector):
+    def __init__(self, projection_sizes, lambd, scale_factor=1) -> None:
+        super().__init__(projection_sizes, lambd, scale_factor)
         # normalization layer for the representations z1 and z2
-        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
-
+        self.bn = nn.BatchNorm1d(projection_sizes[-1], affine=False)
+        
     def forward(self, zp1, zp2):
         z1 = self.projector(zp1)
         z2 = self.projector(zp2)
@@ -34,3 +40,9 @@ class BarlowProjector(nn.Module):
         off_diag = off_diagonal(c).pow_(2).sum()
         loss = self.scale_factor * (on_diag + self.lambd * off_diag)
         return loss
+    
+class SimClr(Projector):
+    def forward(self, zp1, zp2):
+        z1 = self.projector(zp1)
+        z2 = self.projector(zp2)
+        return nt_xent_loss(z1, z2)

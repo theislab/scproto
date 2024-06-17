@@ -13,7 +13,7 @@ def get_home():
     return "/home/icb/fatemehs.hashemig/"
 
 
-def save_model_checkpoint(model, opt, epoch, save_path):
+def save_model_checkpoint(model, epoch, save_path):
     print(f'saving model at {save_path}')
     torch.save(
         {

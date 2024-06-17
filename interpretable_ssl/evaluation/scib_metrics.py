@@ -1,24 +1,22 @@
-# load data
-# load model
-# calculate latent
-# process data to work
-# calculate metric
-
-from interpretable_ssl.pancras.train.train import PancrasTrainer
-from torch.utils.data import DataLoader
-import scib
-
-def calculate_latent(model, loader):
-    latents = []
-    for x, y in loader:
-        latent = model(x)
-        latents.append(latent)
-    return 
-def main():
+from scib_metrics.benchmark import Benchmarker
+import scanpy as sc
+from copy import deepcopy
+def calculate_scib_metrics(input_adata, latent, batch_key="batch", label_key="cell_type"):
+    adata = deepcopy(input_adata)
+    adata.obsm['latent'] = latent
     
-    trainer = PancrasTrainer(split_study=True)
-    model = trainer.get_model()
-    train_loader, test_loader = trainer.get_train_test_loader()
-    
-if __name__ == "__main__":
-    scib.metrics.metrics()
+    # Initialize the Benchmarker
+    benchmarker = Benchmarker(
+        adata,
+        batch_key=batch_key,
+        label_key=label_key,
+        embedding_obsm_keys=['latent'],
+        n_jobs=1  # Adjust the number of jobs according to your system
+    )
+
+    # Perform the benchmark
+    benchmarker.benchmark()
+
+    # Get the results
+    results = benchmarker.get_results(min_max_scale=False)
+    return results, benchmarker

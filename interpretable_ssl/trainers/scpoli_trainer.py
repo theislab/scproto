@@ -10,7 +10,7 @@ from interpretable_ssl import utils
 from torch.utils.data import WeightedRandomSampler
 from scarches.models.scpoli import scPoli
 import numpy as np
-
+from interpretable_ssl.train_utils import *
 
 class ScpoliTrainer(Trainer):
     def __init__(self, dataset=None) -> None:
@@ -64,15 +64,15 @@ class ScpoliTrainer(Trainer):
         train, val = ref.adata[train_idx], ref.adata[val_idx]
         return train, val
 
-    def prepare_scpoli_data_splits(self, ref, scpoli_model):
-        train_adata, val_adata = self.split_train_test(ref)
-        if self.use_weighted_sampling:
-            sampler = self.get_weighted_sampler(train_adata)
-        else:
-            sampler = None
-        train_loader = generate_scpoli_dataloder(train_adata, scpoli_model, sampler)
-        val_loader = generate_scpoli_dataloder(val_adata, scpoli_model)
-        return train_adata, train_loader, val_adata, val_loader
+    # def prepare_scpoli_data_splits(self, ref, scpoli_model):
+    #     train_adata, val_adata = self.split_train_test(ref)
+    #     if self.use_weighted_sampling:
+    #         sampler = self.get_weighted_sampler(train_adata)
+    #     else:
+    #         sampler = None
+    #     train_loader = generate_scpoli_dataloder(train_adata, scpoli_model, sampler, batch_size=self.batch_size)
+    #     val_loader = generate_scpoli_dataloder(val_adata, scpoli_model, batch_size=self.batch_size)
+    #     return train_adata, train_loader, val_adata, val_loader
 
     def to_save(self, val_loss):
         if val_loss.overal < self.best_val_loss:
@@ -80,11 +80,11 @@ class ScpoliTrainer(Trainer):
             return True
         return False
 
-    def train_step(self, model, train_loader, optimizer):
-        return train_step(model, self.train_adata, train_loader, optimizer)
+    def train_step(self, model, optimizer):
+        return scpoli_train_step(model, self.train_adata, optimizer, self.batch_size)
 
-    def test_step(self, model, val_loader):
-        return test_step(model, val_loader, self.val_adata)
+    def test_step(self, model):
+        return scpoli_test_step(model, self.val_adata, self.batch_size)
 
     def train(self, epochs):
         # prepare data (train, test)
@@ -100,33 +100,26 @@ class ScpoliTrainer(Trainer):
         model = self.get_model(ref.adata)
         model.to(self.device)
 
-        train_adata, train_loader, val_adata, val_loader = (
-            self.prepare_scpoli_data_splits(ref, model.scpoli.model)
-        )
-
-        self.train_adata, self.val_adata = train_adata, val_adata
+        self.train_adata, self.val_adata = self.split_train_test(ref)
 
         # init training parameter and wandb
         optimizer = self.get_optimizer(model)
         model_path = self.get_model_path()
 
         # init wandb
-        self.init_wandb(model_path, len(ref), len(query))
+        self.init_wandb(model_path, len(self.train_adata), len(self.val_adata))
         self.best_val_loss = sys.maxsize
 
         for epoch in range(epochs):
 
-            train_loss = self.train_step(model, train_loader, optimizer)
-            val_loss = self.test_step(model, val_loader)
+            train_loss = self.train_step(model, optimizer)
+            val_loss = self.test_step(model)
             self.log_loss(train_loss, val_loss)
             if self.to_save(val_loss):
                 utils.save_model_checkpoint(
                     model,
-                    optimizer,
                     epoch,
                     model_path,
-                    self.train_study_index,
-                    self.test_study_index,
                 )
         return train_loss.overal, self.best_val_loss
 
@@ -157,11 +150,11 @@ class ScpoliTrainer(Trainer):
             labeled_indices=[],
         )
         return scpoli_query
-
-    def get_ref_query_latent(self):
+        
+    def calculate_ref_query_latent(self, fine_tuning = True):
         scpoli_query = self.get_query_model()
-        scpoli_query.train(n_epochs=self.fine_tuning_epochs, pretraining_epochs=40, eta=10)
-
+        if fine_tuning:
+            scpoli_query.train(n_epochs=self.fine_tuning_epochs, pretraining_epochs=40, eta=10)
         query_latent = scpoli_query.get_latent(self.query.adata, mean=True)
         ref_latent = scpoli_query.get_latent(self.ref.adata, mean=True)
         all_latent = scpoli_query.get_latent(self.dataset.adata, mean = True)
@@ -169,9 +162,17 @@ class ScpoliTrainer(Trainer):
 
 
 class ScpoliProtBarlowTrainer(ScpoliTrainer):
-
+    def __init__(self, dataset, projection_version=0) -> None:
+        super().__init__(dataset)
+        self.experiment_name = 'barlow'
+        self.projection_version = projection_version
+    def get_model_name(self):
+        name = super().get_model_name()
+        if self.projection_version != 0:
+            name = f'{name}_projection-version-{self.projection_version}'
+        return name
     def get_model(self, adata):
-        return BarlowPrototypeScpoli(adata, self.latent_dims, self.num_prototypes)
+        return BarlowPrototypeScpoli(adata, self.latent_dims, self.num_prototypes, self.projection_version)
 
 
 class LinearTrainer(ScpoliTrainer):
@@ -244,3 +245,11 @@ class ScpoliOriginal(ScpoliTrainer):
 
     def get_model_name(self):
         return f"original-scpoli-latent{self.latent_dims}"
+
+
+class SimClrTrainer(ScpoliTrainer):
+    def __init__(self, dataset=None) -> None:
+        super().__init__(dataset)
+        self.experiment_name = 'simclr'
+    def get_model(self, adata):
+        return SimClrPrototype(adata, self.latent_dims, self.num_prototypes)

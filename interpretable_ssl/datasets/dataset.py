@@ -7,6 +7,7 @@ import interpretable_ssl.utils as utils
 import random
 import pickle as pkl
 from copy import deepcopy
+import numpy as np
 
 class SingleCellDataset(Dataset):
 
@@ -35,11 +36,26 @@ class SingleCellDataset(Dataset):
         self.self_supervised = self_supervised
         self.multiple_augment_cnt = multiple_augment_cnt
         
+    
+    def partial_fit_le(self, new_cells):
+        new_labels = set(new_cells) - set(self.le.classes_)
+
+        if new_labels:
+            # Add new labels to the existing ones
+            all_labels = np.concatenate([self.le.classes_, list(new_labels)])
+            self.le.classes_ = np.unique(all_labels)
+            
         
     def set_adata(self, adata):
         self.adata = adata
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
+        
+        # Make a copy of the AnnData object if it is a view
+        if self.adata.is_view:
+            self.adata = self.adata.copy()
+
+        # Now modify the obs attribute
         self.adata.obs['encoded_cell_type'] = self.le.transform(self.adata.obs.cell_type)
 
     
