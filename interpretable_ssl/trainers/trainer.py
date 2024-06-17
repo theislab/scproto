@@ -44,13 +44,13 @@ class Trainer:
         self.experiment_name = None
         self.fold = None
         self.ref, self.query = self.dataset.get_train_test()
-        self.fine_tuning_epochs = 50
+        self.fine_tuning_epochs = None
         # only works when using k fold cross val
         self.train_study_index, self.test_study_index = None, None
         self.custom_cross_val = False
         self.model_name_version = 1
         self.ref_latent, self.query_latent, self.all_latent = None, None, None
-        
+
     def append_batch(self, name):
         if self.model_name_version == 2:
             name = f"{name}_bs{self.batch_size}"
@@ -59,17 +59,18 @@ class Trainer:
     def evaluate_classification(self):
         pass
 
-    def calculate_ref_query_latent(self, fine_tuning):
+    def calculate_ref_query_latent(self):
         pass
-    
+
     def set_fold(self, fold):
         self.fold = fold
         self.ref_latent, self.query_latent, self.all_latent = None, None, None
+
+    def get_ref_query_latent(self):
+        if self.ref_latent is None:
         
-    def get_ref_query_latent(self, fine_tuning=True):
-        if self.ref_latent == None:
             self.ref_latent, self.query_latent, self.all_latent = (
-                self.calculate_ref_query_latent(fine_tuning)
+                self.calculate_ref_query_latent()
             )
         return self.ref_latent, self.query_latent, self.all_latent
 
@@ -264,13 +265,13 @@ class Trainer:
 
         return overall_df
 
-    def scib_metrics(self):
+    def scib_metrics_all(self):
         _, _, latent = self.get_ref_query_latent()
         df, _ = calculate_scib_metrics(self.dataset.adata, latent)
         return df
 
-    def query_scib_metrics(self, fine_tuning=True):
-        _, query, _ = self.get_ref_query_latent(fine_tuning)
+    def query_scib_metrics(self):
+        _, query, _ = self.get_ref_query_latent()
         df, _ = calculate_scib_metrics(self.query.adata, query)
         return df
 
@@ -329,8 +330,7 @@ class Trainer:
 
             self.set_fold(self.fold + 1)
             print(f"Evaluating fold {self.fold}")
-            
-            
+
             fold_df_list = [evaluation_fn() for evaluation_fn in evaluation_fns]
 
             for i, _ in enumerate(evaluation_fns):
@@ -338,6 +338,52 @@ class Trainer:
                 fold_df_list[i]["fold"] = self.fold
 
                 # Append the fold dataframes to the overall dataframe
-                overall_df_list[i] = overall_df_list[i].append(fold_df_list[i], ignore_index=True)
+                overall_df_list[i] = overall_df_list[i].append(
+                    fold_df_list[i], ignore_index=True
+                )
 
         return overall_df_list
+    
+
+    def get_query_model_path(self):
+        model_path = self.get_model_path()
+        base, ext = os.path.splitext(model_path)
+        query_suffix = "query"
+        if self.fine_tuning_epochs:
+            query_suffix += f"_e{self.fine_tuning_epochs}"
+
+        if ext:
+            new_file_path = f"{base}_{query_suffix}{ext}"
+        else:
+            new_file_path = f"{model_path}_{query_suffix}"
+
+        return new_file_path
+
+    def get_query_model(self):
+        pass
+
+    def finetune_query_model(self, model):
+        pass
+
+    def load_query_model(self):
+        model = self.get_query_model()
+        if not self.fine_tuning_epochs:
+            return model
+        path = self.get_query_model_path()
+        if os.path.exists(path):
+            checkpoint = torch.load(path)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            return model
+        else:
+            return self.finetune_query_model(model)
+
+    def get_query_model_latent(self, model, adata):
+        pass
+
+    def calculate_ref_query_latent(self):
+        # Setup AnnData for scVI using the same settings as the reference data
+        model = self.load_query_model()
+        query_latent = self.get_query_model_latent(model, self.query.adata)
+        ref_latent = self.get_query_model_latent(model, self.ref.adata)
+        all_latent = self.get_query_model_latent(model, self.dataset.adata)
+        return ref_latent, query_latent, all_latent

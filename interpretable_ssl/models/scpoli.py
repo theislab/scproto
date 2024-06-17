@@ -41,6 +41,10 @@ class PrototypeScpoli(nn.Module):
         self.device = utils.get_device()
         # self.num_prototypes = num_prototypes
 
+    def set_scpoli_model(self, scpoli):
+        self.scpoli = scpoli
+        self.scpoli_model = self.scpoli.model
+        
     def get_prototype_head(self, adata, num_prototypes, latent_dim):
         latent_space = self.get_representation(adata)
         return PrototypeBase(num_prototypes, latent_dim, latent_space)

@@ -3,11 +3,13 @@ import scvi
 
 
 class ScviTrainer(Trainer):
-    def __init__(self, partially_train_ratio=None, self_supervised=False, dataset=None) -> None:
+    def __init__(
+        self, partially_train_ratio=None, self_supervised=False, dataset=None
+    ) -> None:
         super().__init__(partially_train_ratio, self_supervised, dataset)
         # add batch_size in name in version 2
         self.model_name_version = 2
-        
+
     def get_model(self):
         scvi.model.SCVI.setup_anndata(self.ref.adata, layer="counts", batch_key="batch")
         vae = scvi.model.SCVI(
@@ -31,26 +33,21 @@ class ScviTrainer(Trainer):
         name = self.append_batch(name)
         return name
 
-
     def get_model_path(self):
         path = super().get_model_path()
         name, _ = os.path.splitext(path)
         return name
 
-    def load_query_model(self):
+    def get_query_model(self):
         return scvi.model.SCVI.load_query_data(
             self.query.adata,
             self.get_model_path(),
         )
 
-    def calculate_ref_query_latent(self, fine_tuning = True):
-        # Setup AnnData for scVI using the same settings as the reference data
-        model = self.load_query_model()
-        
-        # Fine-tune the model on the query dataset
-        if fine_tuning:
-            model.train(max_epochs=self.fine_tuning_epochs, use_gpu=(self.device == 'cuda'))
-        query_latent = model.get_latent_representation(self.query.adata)
-        ref_latent = model.get_latent_representation(self.ref.adata)
-        all_latent = model.get_latent_representation(self.dataset.adata)
-        return ref_latent, query_latent, all_latent
+    def finetune_query_model(self, model):
+        model.train(max_epochs=self.fine_tuning_epochs, use_gpu=(self.device == "cuda"))
+        model.save(self.get_query_model_path(), overwrite=True)
+        return model
+
+    def get_query_model_latent(self, model, adata):
+        return model.get_latent_representation(adata)
