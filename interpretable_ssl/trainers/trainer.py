@@ -17,7 +17,6 @@ from interpretable_ssl.trainers.linear import *
 from itertools import combinations
 import os
 
-
 class Trainer:
     def __init__(
         self, partially_train_ratio=None, self_supervised=False, dataset=None
@@ -336,7 +335,7 @@ class Trainer:
             for i, _ in enumerate(evaluation_fns):
                 # Add the fold column to the evaluation dataframe
                 fold_df_list[i]["fold"] = self.fold
-
+                fold_df_list[i]['trainer'] = self.get_model_name()
                 # Append the fold dataframes to the overall dataframe
                 overall_df_list[i] = overall_df_list[i].append(
                     fold_df_list[i], ignore_index=True
@@ -365,15 +364,18 @@ class Trainer:
     def finetune_query_model(self, model):
         pass
 
-    def load_query_model(self):
+    def load_query_model(self, model, path):
+        checkpoint = torch.load(path)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        return model 
+    
+    def load_or_finetune_query_model(self):
         model = self.get_query_model()
         if not self.fine_tuning_epochs:
             return model
         path = self.get_query_model_path()
         if os.path.exists(path):
-            checkpoint = torch.load(path)
-            model.load_state_dict(checkpoint["model_state_dict"])
-            return model
+            return self.load_query_model(model, path)
         else:
             return self.finetune_query_model(model)
 
@@ -382,7 +384,7 @@ class Trainer:
 
     def calculate_ref_query_latent(self):
         # Setup AnnData for scVI using the same settings as the reference data
-        model = self.load_query_model()
+        model = self.load_or_finetune_query_model()
         query_latent = self.get_query_model_latent(model, self.query.adata)
         ref_latent = self.get_query_model_latent(model, self.ref.adata)
         all_latent = self.get_query_model_latent(model, self.dataset.adata)
