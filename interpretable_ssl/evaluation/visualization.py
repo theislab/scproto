@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import scanpy as sc
 
-def calculate_umap(embeddings, prototypes=None):
+def calculate_umap(embeddings, prototypes=None, metric='euclidean'):
     num_cells = embeddings.shape[0]
     
     # Convert embeddings to numpy arrays if they are tensors
@@ -23,8 +23,8 @@ def calculate_umap(embeddings, prototypes=None):
         combined_adata = sc.AnnData(combined_data)
         combined_adata.obs['type'] = ['cell'] * num_cells + ['prototype'] * num_prototypes
 
-        # Perform UMAP on the combined data
-        sc.pp.neighbors(combined_adata, use_rep='X')
+        # Perform UMAP on the combined data with specified metric
+        sc.pp.neighbors(combined_adata, use_rep='X', metric=metric)
         sc.tl.umap(combined_adata)
 
         # Extract UMAP embeddings
@@ -32,9 +32,9 @@ def calculate_umap(embeddings, prototypes=None):
         cell_umap = umap_embedding[:num_cells]
         prototype_umap = umap_embedding[num_cells:]
     else:
-        # Perform UMAP on the embeddings only
+        # Perform UMAP on the embeddings only with specified metric
         adata = sc.AnnData(embeddings)
-        sc.pp.neighbors(adata, use_rep='X')
+        sc.pp.neighbors(adata, use_rep='X', metric=metric)
         sc.tl.umap(adata)
         
         # Extract UMAP embeddings
@@ -98,6 +98,6 @@ def plot_umap(cell_umap, prototype_umap, cell_types, study_labels):
     
     plt.show()
 
-# Example usage:
-# cell_umap, prototype_umap = calculate_umap(embeddings, prototypes)
+# Example usage with cosine similarity:
+# cell_umap, prototype_umap = calculate_umap(embeddings, prototypes, metric='cosine')
 # plot_umap(cell_umap, prototype_umap, cell_types, study_labels)
