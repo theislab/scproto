@@ -23,8 +23,36 @@ def calculate_umap(embeddings, prototypes=None, metric='euclidean'):
         combined_adata = sc.AnnData(combined_data)
         combined_adata.obs['type'] = ['cell'] * num_cells + ['prototype'] * num_prototypes
 
+        # Check for cells with all zero counts
+        all_zero_cells = np.all(combined_adata.X == 0, axis=1)
+        if np.any(all_zero_cells):
+            print(f"Number of all-zero cells: {np.sum(all_zero_cells)}")
+            combined_adata = combined_adata[~all_zero_cells]  # Remove all-zero cells
+
+        # Normalize the data
+        sc.pp.normalize_total(combined_adata, target_sum=1e4)
+
+        # Check for NaNs after normalization
+        if np.any(np.isnan(combined_adata.X)):
+            print("Data contains NaNs after normalization")
+
+        # Log transform the data
+        sc.pp.log1p(combined_adata)
+
+        # Check for NaNs after log transformation
+        if np.any(np.isnan(combined_adata.X)):
+            print("Data contains NaNs after log transformation")
+
+        # Scale the data
+        sc.pp.scale(combined_adata, max_value=10)
+
+        # Check for NaNs after scaling
+        if np.any(np.isnan(combined_adata.X)):
+            print("Data contains NaNs after scaling")
+
         # Perform UMAP on the combined data with specified metric
-        sc.pp.neighbors(combined_adata, use_rep='X', metric=metric)
+        # sc.pp.neighbors(combined_adata, use_rep='X', metric=metric)
+        sc.pp.neighbors(combined_adata, use_rep='X', n_neighbors=15)
         sc.tl.umap(combined_adata)
 
         # Extract UMAP embeddings
@@ -44,59 +72,76 @@ def calculate_umap(embeddings, prototypes=None, metric='euclidean'):
     
     return cell_umap, prototype_umap
 
-def plot_umap(cell_umap, prototype_umap, cell_types, study_labels):
-    # Plot UMAP embeddings colored by cell type
-    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+def plot_umap(cell_umap, prototype_umap, cell_types, study_labels, augmentation_labels=None):
+    # Determine the number of subplots based on whether augmentation labels are provided
+    n_plots = 3 if augmentation_labels is not None else 2
+    fig, axes = plt.subplots(1, n_plots, figsize=(20, 8))
+
+    # Optionally plot cell embeddings colored by augmentation
+    if augmentation_labels is not None:
+        unique_augmentations = np.unique(augmentation_labels)
+        unique_colors_augmentations = plt.cm.get_cmap('tab20', len(unique_augmentations))
+        colors_augmentations = ListedColormap(unique_colors_augmentations(np.linspace(0, 1, len(unique_augmentations))))
+
+        for i, aug in enumerate(unique_augmentations):
+            indices = np.where(augmentation_labels == aug)[0]
+            axes[0].scatter(cell_umap[indices, 0], cell_umap[indices, 1], label=aug, color=colors_augmentations(i), alpha=0.6, s=20)
+
+        if prototype_umap is not None:
+            axes[0].scatter(prototype_umap[:, 0], prototype_umap[:, 1], color='white', edgecolor='black', s=100, marker='o', label='Prototypes')
+
+        axes[0].set_title('UMAP of Cell Embeddings with Augmentations Highlighted')
+        axes[0].set_xlabel('UMAP Dimension 1')
+        axes[0].set_ylabel('UMAP Dimension 2')
 
     # Plot cell embeddings colored by cell type
     unique_cell_types = np.unique(cell_types)
-    
-    # Generate a list of unique colors for cell types
     unique_colors = plt.cm.get_cmap('tab20', len(unique_cell_types))
     colors = ListedColormap(unique_colors(np.linspace(0, 1, len(unique_cell_types))))
-    
+
     for i, cell_type in enumerate(unique_cell_types):
         indices = np.where(cell_types == cell_type)[0]
-        axes[0].scatter(cell_umap[indices, 0], cell_umap[indices, 1], label=cell_type, color=colors(i), alpha=0.6, s=20)
-    
+        axes[1 if augmentation_labels is not None else 0].scatter(cell_umap[indices, 0], cell_umap[indices, 1], label=cell_type, color=colors(i), alpha=0.6, s=20)
+
     if prototype_umap is not None:
-        # Highlight prototypes
-        axes[0].scatter(prototype_umap[:, 0], prototype_umap[:, 1], color='white', edgecolor='black', s=100, marker='o', label='Prototypes')
-    
-    axes[0].set_title('UMAP of Cell Embeddings with Cell Types Highlighted')
-    axes[0].set_xlabel('UMAP Dimension 1')
-    axes[0].set_ylabel('UMAP Dimension 2')
-    
+        axes[1 if augmentation_labels is not None else 0].scatter(prototype_umap[:, 0], prototype_umap[:, 1], color='white', edgecolor='black', s=100, marker='o', label='Prototypes')
+
+    axes[1 if augmentation_labels is not None else 0].set_title('UMAP of Cell Embeddings with Cell Types Highlighted')
+    axes[1 if augmentation_labels is not None else 0].set_xlabel('UMAP Dimension 1')
+    axes[1 if augmentation_labels is not None else 0].set_ylabel('UMAP Dimension 2')
+
     # Plot cell embeddings colored by study
     unique_studies = np.unique(study_labels)
-    
-    # Generate a list of unique colors for studies
     unique_colors_studies = plt.cm.get_cmap('tab20', len(unique_studies))
     colors_studies = ListedColormap(unique_colors_studies(np.linspace(0, 1, len(unique_studies))))
-    
+
     for i, study in enumerate(unique_studies):
         indices = np.where(study_labels == study)[0]
-        axes[1].scatter(cell_umap[indices, 0], cell_umap[indices, 1], label=study, color=colors_studies(i), alpha=0.6, s=20)
-    
+        axes[2 if augmentation_labels is not None else 1].scatter(cell_umap[indices, 0], cell_umap[indices, 1], label=study, color=colors_studies(i), alpha=0.6, s=20)
+
     if prototype_umap is not None:
-        # Highlight prototypes
-        axes[1].scatter(prototype_umap[:, 0], prototype_umap[:, 1], color='white', edgecolor='black', s=100, marker='o', label='Prototypes')
-    
-    axes[1].set_title('UMAP of Cell Embeddings with Studies Highlighted')
-    axes[1].set_xlabel('UMAP Dimension 1')
-    axes[1].set_ylabel('UMAP Dimension 2')
-    
+        axes[2 if augmentation_labels is not None else 1].scatter(prototype_umap[:, 0], prototype_umap[:, 1], color='white', edgecolor='black', s=100, marker='o', label='Prototypes')
+
+    axes[2 if augmentation_labels is not None else 1].set_title('UMAP of Cell Embeddings with Studies Highlighted')
+    axes[2 if augmentation_labels is not None else 1].set_xlabel('UMAP Dimension 1')
+    axes[2 if augmentation_labels is not None else 1].set_ylabel('UMAP Dimension 2')
+
     # Adjust layout to make space for the legends
     plt.tight_layout(rect=[0, 0.15, 1, 1])
-    
+
     # Adding legends below the plots
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.25, -0.2), ncol=3, title='Cell Types')
-    
-    handles, labels = axes[1].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.75, -0.2), ncol=3, title='Studies')
-    
+    if augmentation_labels is not None:
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.20, -0.2), ncol=3, title='Augmentations')
+
+    handles, labels = axes[1 if augmentation_labels is not None else 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.50 if n_plots == 3 else 0.25, -0.2), ncol=3, title='Cell Types')
+
+    handles, labels = axes[2 if augmentation_labels is not None else 1].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.80 if n_plots == 3 else 0.75, -0.2), ncol=3, title='Studies')
+
     plt.show()
+
 
 # Example usage with cosine similarity:
 # cell_umap, prototype_umap = calculate_umap(embeddings, prototypes, metric='cosine')

@@ -13,6 +13,7 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import apex
 from apex.parallel.LARC import LARC
+from sklearn.model_selection import KFold
 
 from swav.src.utils import (
     bool_flag,
@@ -33,90 +34,28 @@ from interpretable_ssl.evaluation.visualization import *
 import torch
 from torch.utils.data import DataLoader, Subset
 import numpy as np
-from interpretable_ssl.configs.defaults import get_swav_defaults
-from interpretable_ssl.configs.parsers import add_swav_parser_args
+from interpretable_ssl.configs.defaults import *
 
 logger = getLogger()
 
 class SwAV(ScpoliTrainer):
     def __init__(self, parser=None, **kwargs):
-        super().__init__(None, **kwargs)
-
-        if parser is not None:
-            self.args = add_swav_parser_args(parser).parse_args()
-        else:
-            defaults = get_swav_defaults()
-            defaults.update(kwargs)
-            self.args = argparse.Namespace(**defaults)
+        # Get default values for Swav
+        self.default_values = get_swav_defaults()
         
-        self.experiment_name = self.args.experiment_name
-        self.set_data_parameters(self.args)
-        self.set_swav_parameters(self.args)
-        self.set_optimization_parameters(self.args)
-        self.set_distribution_parameters(self.args)
-        self.set_other_parameters(self.args)
-        self.set_optional_fields(self.args)
-
-        self.create_dump_path()
-        self.seed = self.args.seed
+        kwargs = self.update_kwargs(parser, kwargs)
         
-    def set_data_parameters(self, args):
-        self.nmb_crops = args.nmb_crops
-        self.augmentation_type = args.augmentation_type
-        self.size_crops = args.size_crops
-        self.min_scale_crops = args.min_scale_crops
-        self.max_scale_crops = args.max_scale_crops
+        # Extract SwavTrainer-specific arguments
+        scpoli_keys = get_scpoli_defaults().keys()
+        scpoli_kwargs = {key: kwargs.pop(key) for key in scpoli_keys if key in kwargs}
+        super().__init__(**scpoli_kwargs)
+        
+        # Set specific attributes for SwavTrainer
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
-    def set_swav_parameters(self, args):
-        self.crops_for_assign = args.crops_for_assign
-        self.temperature = args.temperature
-        self.epsilon = args.epsilon
-        self.sinkhorn_iterations = args.sinkhorn_iterations
-        self.latent_dims = args.latent_dims
-        self.feat_dim = self.latent_dims
-        self.num_prototypes = args.num_prototypes
         self.nmb_prototypes = self.num_prototypes
-        self.queue_length = args.queue_length
-        self.epoch_queue_starts = args.epoch_queue_starts
-
-    def set_optimization_parameters(self, args):
-        self.epochs = args.epochs
-        self.batch_size = args.batch_size
-        self.base_lr = args.base_lr
-        self.final_lr = args.final_lr
-        self.freeze_prototypes_niters = args.freeze_prototypes_niters
-        self.wd = args.wd
-        self.warmup_epochs = args.warmup_epochs
-        self.start_warmup = args.start_warmup
-        self.cvae_loss_scaler = args.cvae_loss_scaler
-        self.prot_decoding_loss_scaler = args.prot_decoding_loss_scaler
-
-    def set_distribution_parameters(self, args):
-        self.dist_url = args.dist_url
-        self.world_size = args.world_size
-        self.rank = args.rank
-        self.local_rank = args.local_rank
-
-    def set_other_parameters(self, args):
-        self.workers = args.workers
-        self.checkpoint_freq = args.checkpoint_freq
-        self.use_fp16 = args.use_fp16
-        self.sync_bn = args.sync_bn
-        self.syncbn_process_group_size = args.syncbn_process_group_size
-        self.dump_name_version = args.dump_name_version
-
-    def set_optional_fields(self, args):
-        self.model = args.model
-        self.optimizer = args.optimizer
-        self.lr_schedule = args.lr_schedule
-        self.queue = args.queue
-        self.train_loader = args.train_loader
-        self.training_stats = args.training_stats
-        self.condition_key = args.condition_key
-        self.cell_type_key = args.cell_type_key
-        self.device = args.device
-        self.debug = args.debug
-        self.freezable_prototypes = args.freezable_prototypes
+        self.create_dump_path()
 
     def create_dump_path(self):
         self.dump_path = self.get_dump_path()
@@ -124,7 +63,7 @@ class SwAV(ScpoliTrainer):
             os.makedirs(self.dump_path)
 
     def get_dump_path(self):
-        dump_path, _ = os.path.splitext(self.get_model_path())
+        dump_path = super().get_dump_path()
         if self.dump_name_version != 1:
             dump_path = f"{dump_path}_aug{self.nmb_crops[0]}_latent{self.latent_dims}"
         if self.dump_name_version > 2:
@@ -190,10 +129,13 @@ class SwAV(ScpoliTrainer):
         checkpoint_path = os.path.join(self.dump_path, "checkpoint.pth.tar")
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])
-        model.to("cuda")
-        self.optimizer.load_state_dict(checkpoint["optimizer"])
-
+        model.to(self.device)
+        
+        # self.optimizer.load_state_dict(checkpoint["optimizer"])
         # model, _ = apex.amp.initialize(model, self.optimizer, opt_level="O1")
+        
+        # model = apex.amp.initialize(model, opt_level="O1")
+        
         self.scpoli_.model = model.scpoli_model
         return model
 
@@ -293,6 +235,8 @@ class SwAV(ScpoliTrainer):
                 self.model, self.optimizer, opt_level="O1"
             )
             logger.info("Initializing mixed precision done.")
+        else:
+            logger.info('no mixed precision')
 
     def load_checkpoint(self):
         to_restore = {"epoch": 0}
@@ -331,7 +275,7 @@ class SwAV(ScpoliTrainer):
             }
         )
 
-    def run(self):
+    def train(self):
         cudnn.benchmark = True
         for epoch in range(self.start_epoch, self.epochs):
             logger.info(f"============ Starting epoch {epoch} ... ============")
@@ -350,11 +294,8 @@ class SwAV(ScpoliTrainer):
             # self.training_stats.update(scores)
             self.log_wandb_loss(scores)
             self.save_checkpoint(epoch)
+        
 
-    def move_input_on_device(self, inputs):
-        for key in inputs:
-            inputs[key] = inputs[key].to(self.device)
-        return inputs
 
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
@@ -499,9 +440,9 @@ class SwAV(ScpoliTrainer):
             self.ref.adata.obs.study,
         )
         self.embedding_umap, self.prototype_umap = calculate_umap(
-            embeddings, prototypes, 'cosine'
+            embeddings, prototypes
         )
-        self.outputs_umap, _ = calculate_umap(outputs, metric='cosine')
+        self.outputs_umap, _ = calculate_umap(outputs)
 
     def plot_ref_prot_umap(self):
         plot_umap(
@@ -510,8 +451,10 @@ class SwAV(ScpoliTrainer):
 
     def plot_ref_mapping_umap(self):
         plot_umap(self.outputs_umap, None, self.cell_types, self.study_labels)
-
+        
+        
     def plot_by_augmentation(self, n_samples, n_augmentations):
+        print('using new plot augmentations, correct decoding')
         model = self.load_model()
         # Initialize the dataset with the entire adata
         self.train_ds.n_augmentations = n_augmentations
@@ -522,16 +465,15 @@ class SwAV(ScpoliTrainer):
 
         # Create a DataLoader for the sampled subset
         subset_dataset = Subset(self.train_ds, indices)
-        dataloader = DataLoader(
-            subset_dataset, batch_size=self.batch_size, shuffle=False
-        )
+        dataloader = DataLoader(subset_dataset, batch_size=self.batch_size, shuffle=False)
 
-        # Initialize lists to store embeddings and labels
+        # Initialize lists to store embeddings, labels, and study labels
         all_embeddings = []
         all_labels = []
+        all_celltypes = []
+        all_study_labels = []
 
         for i, inputs in enumerate(dataloader):
-
             # Move inputs to device
             inputs = self.move_input_on_device(inputs)
             batch_size = inputs["x"].shape[0]
@@ -551,21 +493,43 @@ class SwAV(ScpoliTrainer):
             # Generate labels for the augmentations
             batch_size = inputs["x"].shape[0] // n_augmentations
 
-            # Append embeddings and labels to the lists
+            # Append embeddings, labels, cell types, and study labels to the lists
             all_embeddings.append(embeddings)
             all_labels.append(labels)
+            all_celltypes.append(inputs["celltypes"].cpu().numpy())
+            all_study_labels.append(inputs["batch"].cpu().numpy())  # Extract study labels
 
-        # Concatenate all embeddings and labels
+        # Concatenate all embeddings, labels, cell types, and study labels
         all_embeddings = np.concatenate(all_embeddings, axis=0)
         all_labels = np.concatenate(all_labels, axis=0)
+        all_celltypes = np.concatenate(all_celltypes, axis=0)
+        all_study_labels = np.concatenate(all_study_labels, axis=0)  # Concatenate study labels
+
+        # Create a reverse dictionary for cell type decoding
+        all_celltypes = all_celltypes.reshape(-1)
+        cell_type_encoder = self.train_ds.cell_type_encoder
+        reverse_cell_type_encoder = {v: k for k, v in cell_type_encoder.items()}
+        decoded_celltypes = np.array([reverse_cell_type_encoder[idx] for idx in all_celltypes])
 
         cell_umap, prototype_umap = calculate_umap(all_embeddings)
         plot_umap(
-            cell_umap,
-            prototype_umap,
-            inputs["celltypes"].reshape(n_samples * n_augmentations).cpu(),
-            all_labels,
+            cell_umap, 
+            prototype_umap, 
+            decoded_celltypes, 
+            all_study_labels.reshape(-1),  # Pass study labels to plot_umap
+            all_labels.reshape(-1)  # Optional augmentation labels
         )
+        
+    def encode_batch(self, model, batch):
+        batch = self.move_input_on_device(batch)
+        model.eval()
+        with torch.no_grad():
+            x, _, _, _ = model(batch)
+        return x
+
+    def get_scpoli_model(self, pretrained_model):
+        return pretrained_model.scpoli_model
+
 
 
 if __name__ == "__main__":
