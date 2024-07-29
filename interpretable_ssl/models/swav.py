@@ -1,73 +1,52 @@
-# Note: The model and training settings do not follow the reference settings
-# from the paper. The settings are chosen such that the example can easily be
-# run on a small dataset with a single GPU.
-
+import torch.nn as nn
 import torch
-import torchvision
-from torch import nn
 
-from lightly.loss import SwaVLoss
-from lightly.models.modules import SwaVProjectionHead, SwaVPrototypes
-from lightly.transforms.swav_transform import SwaVTransform
+# encoder
+# possibly a projection head
+# prototype layer
 
 
-class SwaV(nn.Module):
-    def __init__(self, backbone):
+class SwavModel(nn.Module):
+    def __init__(self, scpoli_model, latent_dim, nmb_prototypes):
         super().__init__()
-        self.backbone = backbone
-        self.projection_head = SwaVProjectionHead(512, 512, 128)
-        self.prototypes = SwaVPrototypes(128, n_prototypes=512)
+        self.scpoli_model = scpoli_model
+        self.prototypes = nn.Linear(latent_dim, nmb_prototypes, bias=False)
+        self.projection_head = None
+        self.l2norm = True
+        print("swav model with l2n init")
+        self.reg1 = 0.5
+        self.reg2 = 0.5
 
-    def forward(self, x):
-        x = self.backbone(x).flatten(start_dim=1)
-        x = self.projection_head(x)
-        x = nn.functional.normalize(x, dim=1, p=2)
-        p = self.prototypes(x)
-        return p
+    def forward(self, batch):
+        x, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
 
+        if self.projection_head is not None:
+            x = self.projection_head(x)
 
-resnet = torchvision.models.resnet18()
-backbone = nn.Sequential(*list(resnet.children())[:-1])
-model = SwaV(backbone)
+        if self.l2norm:
+            x = nn.functional.normalize(x, dim=1, p=2)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device)
+        prot_decoding_loss = self.prototype_decoding_loss(x)
+        
+        # TO DO: recheck this with priginal scpoli
+        calc_alpha_coeff = 0.5
+        cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
+        
+        return x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
-transform = SwaVTransform()
-# we ignore object detection annotations by setting target_transform to return 0
-dataset = torchvision.datasets.VOCDetection(
-    "datasets/pascal_voc",
-    download=True,
-    transform=transform,
-    target_transform=lambda t: 0,
-)
-# or create a dataset from a folder containing images or videos:
-# dataset = LightlyDataset("path/to/folder")
+    def get_prototypes(self):
+        return self.prototypes.weight.detach().cpu()
 
-dataloader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=128,
-    shuffle=True,
-    drop_last=True,
-    num_workers=8,
-)
+    def prototype_distance(self, z: torch.Tensor):
+        return torch.cdist(z, self.prototypes.weight)
 
-criterion = SwaVLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    def feature_vector_distance(self, z: torch.Tensor):
+        return torch.cdist(self.prototypes.weight, z)
 
-print("Starting Training")
-for epoch in range(10):
-    total_loss = 0
-    for batch in dataloader:
-        views = batch[0]
-        model.prototypes.normalize()
-        multi_crop_features = [model(view.to(device)) for view in views]
-        high_resolution = multi_crop_features[:2]
-        low_resolution = multi_crop_features[2:]
-        loss = criterion(high_resolution, low_resolution)
-        total_loss += loss.detach()
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-    avg_loss = total_loss / len(dataloader)
-    print(f"epoch: {epoch:>02}, loss: {avg_loss:.5f}")
+    def prototype_decoding_loss(self, z):
+        p_dist = self.prototype_distance(z)
+        f_dist = self.feature_vector_distance(z)
+        return (
+            self.reg1 * p_dist.min(1).values.mean()
+            + self.reg2 * f_dist.min(1).values.mean()
+        )
