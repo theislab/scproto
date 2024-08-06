@@ -43,7 +43,10 @@ class ScviTrainer(Trainer):
             self.query.adata,
             self.get_model_path(),
         )
-
+        
+    def load_query_model(self, model, path):
+        return scvi.model.SCVI.load(path, self.query.adata)
+    
     def finetune_query_model(self, model):
         model.train(max_epochs=self.fine_tuning_epochs, use_gpu=(self.device == "cuda"))
         model.save(self.get_query_model_path(), overwrite=True)
