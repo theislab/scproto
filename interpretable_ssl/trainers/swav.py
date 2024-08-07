@@ -53,7 +53,7 @@ class SwAV(ScpoliTrainer):
         # Set specific attributes for SwavTrainer
         for key, value in kwargs.items():
             setattr(self, key, value)
-
+        self.default_values = get_swav_defaults()
         self.nmb_prototypes = self.num_prototypes
         self.set_experiment_name()
         self.create_dump_path()
@@ -305,10 +305,12 @@ class SwAV(ScpoliTrainer):
             self.update_learning_rate(epoch, iteration)
             
             # move same functionality inside model
-            # with torch.no_grad():
-            #     w = self.model.prototypes.weight.data.clone()
-            #     w = nn.functional.normalize(w, dim=1, p=2)
-            #     self.model.prototypes.weight.copy_(w)
+            
+            with torch.no_grad():
+                self.model.normalize_prototypes()
+                # w = self.model.prototypes.weight.data.clone()
+                # w = nn.functional.normalize(w, dim=1, p=2)
+                # self.model.prototypes.weight.copy_(w)
             
             inputs = self.move_input_on_device(inputs)
             inputs = reshape_and_reorder_dict(inputs)

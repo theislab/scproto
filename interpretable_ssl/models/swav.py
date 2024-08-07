@@ -59,12 +59,12 @@ class SwavBase(nn.Module):
         return self.prototypes.weight.data
     
     def normalize_prototypes(self):
-        prototypes = self.get_prototypes().clone()
-        prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
-        self.set_prototypes(prototypes)
+        w = self.get_prototypes().clone()
+        w = nn.functional.normalize(w, dim=1, p=2)
+        self.set_prototypes(w)
         
-    def set_prototypes(self, prototypes):
-        self.prototypes.weight.copy_(prototypes)
+    def set_prototypes(self, w):
+        self.prototypes.weight.copy_(w)
         
 class SwavModel(SwavBase):
     def __init__(
@@ -92,6 +92,36 @@ class SwavModel(SwavBase):
         else:
             self.projection_head = None
             
+        self.normalize_latent = True
+        
+        
+    def new_forward(self, batch):
+        encoder_out, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
+        encoder_out = nn.functional.normalize(x, dim=1, p=2)
+        
+        # TO DO: recheck this with priginal scpoli
+        calc_alpha_coeff = 0.5
+        cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
+
+        # interpretablity loss
+        prot_decoding_loss = self.prototype_decoding_loss(encoder_out)
+
+        if self.projection_head is not None:
+            x = self.projection_head(encoder_out)
+            prototypes = self.projection_head(self.prototypes)
+        else:
+            x = encoder_out
+            prototypes = self.prototypes
+
+        if self.l2norm:
+            x = nn.functional.normalize(x, dim=1, p=2)
+            prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
+
+        x_mapped = torch.matmul(x, prototypes.t())
+
+        # return x, self.prototypes(x), cvae_loss, prot_decoding_loss
+        return encoder_out, x, x_mapped, cvae_loss, prot_decoding_loss
+    
     def forward(self, batch):
         encoder_out, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
 
@@ -111,7 +141,7 @@ class SwavModel(SwavBase):
 
         if self.l2norm:
             x = nn.functional.normalize(x, dim=1, p=2)
-            # prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
+            prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
 
         x_mapped = torch.matmul(x, prototypes.t())
 

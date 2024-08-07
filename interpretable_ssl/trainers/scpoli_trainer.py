@@ -26,10 +26,9 @@ from ignite.metrics import Loss
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 import os
 from interpretable_ssl.evaluation.visualization import *
-from interpretable_ssl.trainers.base import ScpoliTrainerBase
 
 
-class ScpoliTrainer(Trainer, ScpoliTrainerBase):
+class ScpoliTrainer(Trainer):
     def __init__(self, parser=None, **kwargs) -> None:
         self.default_values = get_scpoli_defaults()
         self.update_kwargs(parser, kwargs)

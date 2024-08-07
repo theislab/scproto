@@ -9,7 +9,7 @@ def get_model_dir():
 class TrainerBase:
     def __init__(
         self,
-        dataset_id="immune",
+        dataset_id="pbmc-immune",
         model_name_version=3,
         num_prototypes=8,
         hidden_dim=64,
@@ -86,37 +86,3 @@ class TrainerBase:
 
     def get_model_path(self):
         return self.get_dump_path() + ".pth"
-
-class ScpoliTrainerBase(TrainerBase):
-    def update_kwargs(self, parser, kwargs):
-        if parser is not None:
-            parser = self.add_parser_args(parser)
-            args = parser.parse_args()
-            kwargs.update(vars(args))
-
-        # Use default values for any missing kwargs
-        for key, value in self.default_values.items():
-            if value == "":
-                value = None
-            kwargs.setdefault(key, value)
-        return kwargs
-class SwavTrainerBase(TrainerBase):
-    def __init__(self, parser=None, **kwargs):
-        # Get default values for Swav
-        self.default_values = get_swav_defaults()
-        
-        kwargs = self.update_kwargs(parser, kwargs)
-        
-        # Extract SwavTrainer-specific arguments
-        scpoli_keys = get_scpoli_defaults().keys()
-        scpoli_kwargs = {key: kwargs.pop(key) for key in scpoli_keys if key in kwargs}
-        super().__init__(**scpoli_kwargs)
-        
-        # Set specific attributes for SwavTrainer
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-        self.nmb_prototypes = self.num_prototypes
-        self.set_experiment_name()
-        self.create_dump_path()
-        self.use_projector_out = False
