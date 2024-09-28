@@ -9,6 +9,7 @@ import pickle as pkl
 from copy import deepcopy
 import numpy as np
 
+import inspect
 class SingleCellDataset(Dataset):
 
     def __init__(
@@ -19,6 +20,7 @@ class SingleCellDataset(Dataset):
         self_supervised=False,
         multiple_augment_cnt=None,
         label_encoder_path=None,
+        **kwargs,
     ):
         self.device = utils.get_device()
         self.name = name
@@ -36,7 +38,17 @@ class SingleCellDataset(Dataset):
         self.self_supervised = self_supervised
         self.multiple_augment_cnt = multiple_augment_cnt
         
-    
+           # Store the initialization arguments
+        self.init_args = {
+            'name': name,
+            'adata': adata,
+            'use_pca': use_pca,
+            'self_supervised': self_supervised,
+            'multiple_augment_cnt': multiple_augment_cnt,
+            'label_encoder_path': label_encoder_path,
+        }
+        self.init_args.update(kwargs)
+
     def partial_fit_le(self, new_cells):
         new_labels = set(new_cells) - set(self.le.classes_)
 
@@ -44,21 +56,21 @@ class SingleCellDataset(Dataset):
             # Add new labels to the existing ones
             all_labels = np.concatenate([self.le.classes_, list(new_labels)])
             self.le.classes_ = np.unique(all_labels)
-            
-        
+
     def set_adata(self, adata):
         self.adata = adata
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
-        
+
         # Make a copy of the AnnData object if it is a view
         if self.adata.is_view:
             self.adata = self.adata.copy()
 
         # Now modify the obs attribute
-        self.adata.obs['encoded_cell_type'] = self.le.transform(self.adata.obs.cell_type)
+        self.adata.obs["encoded_cell_type"] = self.le.transform(
+            self.adata.obs.cell_type
+        )
 
-    
     def __str__(self) -> str:
         return self.name
 
@@ -72,7 +84,7 @@ class SingleCellDataset(Dataset):
         return data
 
     def load_label_encoder(self):
-        return pkl.load(open(self.label_encoder_path, 'rb'))
+        return pkl.load(open(self.label_encoder_path, "rb"))
 
     # def set_use_pca(self, use_pca):
     #     self.use_pca = use_pca
@@ -91,63 +103,75 @@ class SingleCellDataset(Dataset):
             return x, y
 
     def get_self_supervised_item(self, idx):
-        x1 = self.get_x(idx).squeeze(0)
-        cell_type = self.adata[idx].obs.cell_type
-        if self.multiple_augment_cnt:
-            x2 = [
-                self.augment(cell_type).squeeze(0)
-                for _ in range(self.multiple_augment_cnt)
-            ]
-            x2 = torch.stack(x2)
-            x2 = x2.to(self.device)
+        if self.multiple_augment_cnt is not None:
+            return self.get_multi_crops_item(idx)
         else:
+            x1 = self.get_x(idx).squeeze(0)
+            cell_type = self.adata[idx].obs.cell_type
             x2 = self.augment(cell_type).squeeze(0)
-        return x1, x2
+            return x1, x2
+
+    def get_multi_crops_item(self, idx):
+        cell_type = self.adata[idx].obs.cell_type
+        # Original item
+        x = self.get_x(idx).to(self.device)
+        # Augmented versions
+        augmented_versions = [
+            self.augment(cell_type).squeeze(0)
+            for _ in range(self.multiple_augment_cnt - 1)
+        ]
+        # Combine original item with augmented versions
+        all_versions = [x] + augmented_versions
+        all_versions = torch.stack(all_versions)
+        all_versions = all_versions.to(self.device)
+        return all_versions
 
     def get_study_ids(self):
-        study_ids = self.adata.obs.study.unique() 
+        study_ids = self.adata.obs.study.unique()
         return study_ids
-    
+
     def get_fold_train_test(self, train_study_index, test_study_index):
         study_ids = self.get_study_ids()
         train_studies = study_ids[train_study_index]
         test_studies = study_ids[test_study_index]
         train_idx = self.adata.obs.study.isin(train_studies)
         test_idx = self.adata.obs.study.isin(test_studies)
-        
+
         train, test = self.adata[train_idx], self.adata[test_idx]
         train_ds, test_ds = deepcopy(self), deepcopy(self)
         train_ds.set_adata(train)
         test_ds.set_adata(test)
         return train_ds, test_ds
-    
+
     def get_train_test(self):
         pass
-    
+
     def get_train_test_random(self):
         # return random_split(
         #     self, [0.7, 0.3], generator=torch.Generator().manual_seed(42)
         # )
-        
+
         # Assuming 'batch' or 'sample' are the columns used for splitting
         # You can change 'batch' to any other column that you want to use for the split
-        if 'study' in self.adata.obs.columns:
-            labels = self.adata.obs['study']
+        if "study" in self.adata.obs.columns:
+            labels = self.adata.obs["study"]
         else:
             # If 'batch' does not exist, fall back to splitting cells directly
             labels = self.adata.obs_names
         # Split indices
-        train_idx, test_idx = train_test_split(range(len(self.adata)), test_size=0.2, random_state=42, stratify=labels)
+        train_idx, test_idx = train_test_split(
+            range(len(self.adata)), test_size=0.2, random_state=42, stratify=labels
+        )
 
         # Split the AnnData object
         adata_train = self.adata[train_idx].copy()
         adata_test = self.adata[test_idx].copy()
-        
+
         train_ds, test_ds = deepcopy(self), deepcopy(self)
         train_ds.set_adata(adata_train)
         test_ds.set_adata(adata_test)
         return train_ds, test_ds
-        
+
     def get_x(self, i):
         if self.use_pca:
             x = self.adata[i].obsm["X_pca"]
@@ -175,3 +199,31 @@ class SingleCellDataset(Dataset):
         rand_idx = random.randint(0, len(all_cells) - 1)
         x = all_cells[rand_idx].X.toarray()
         return torch.tensor(x, device=self.device)
+
+    def split(self, test_size=0.2, random_state=None):
+        """Split the dataset into train and test datasets."""
+        train_idx, test_idx = train_test_split(
+            range(self.adata.n_obs), test_size=test_size, random_state=random_state
+        )
+        return (
+            self._create_split_instance(train_idx),
+            self._create_split_instance(test_idx),
+        )
+
+    def _create_split_instance(self, indices):
+        """Create a new instance of the current class with the given indices of adata."""
+        adata_split = self.adata[indices].copy()
+
+        # Get the signature of the __init__ method of the current class
+        init_signature = inspect.signature(self.__class__.__init__)
+
+        # Filter the init_args to include only those that are accepted by the __init__ method
+        filtered_args = {
+            key: value for key, value in self.init_args.items()
+            if key in init_signature.parameters
+        }
+
+        # Update the adata in the arguments
+        filtered_args['adata'] = adata_split
+
+        return self.__class__(**filtered_args)

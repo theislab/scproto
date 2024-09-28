@@ -26,7 +26,7 @@ from ignite.metrics import Loss
 from ignite.contrib.handlers.tqdm_logger import ProgressBar
 import os
 from interpretable_ssl.evaluation.visualization import *
-
+from interpretable_ssl.evaluation.scib_metrics import calculate_scib_metrics_using_benchmarker
 
 class ScpoliTrainer(Trainer):
     def __init__(self, parser=None, **kwargs) -> None:
@@ -46,11 +46,23 @@ class ScpoliTrainer(Trainer):
         self.condition_key = condition_key
         self.cell_type_key = cell_type_key
 
+    def create_dump_path(self):
+        self.dump_path = self.get_dump_path()
+        if not os.path.exists(self.dump_path):
+            os.makedirs(self.dump_path)
+
     def update_kwargs(self, parser, kwargs):
         if parser is not None:
             parser = self.add_parser_args(parser)
             args = parser.parse_args()
-            kwargs.update(vars(args))
+            args_dict = vars(args)
+
+            # Remove keys from args_dict if their value is the string "None"
+            keys_to_remove = [key for key, value in args_dict.items() if value == "None"]
+            for key in keys_to_remove:
+                del args_dict[key]
+
+            kwargs.update(args_dict)
 
         # Use default values for any missing kwargs
         for key, value in self.default_values.items():
@@ -100,7 +112,7 @@ class ScpoliTrainer(Trainer):
         return scpoli_test_step(model, val_adata, self.batch_size)
 
     def train(self):
-        epochs = self.epochs
+        epochs = self.pretraining_epochs
         print("running scpoli trainer class train")
         ref, _ = self.ref, self.query
         model = self.get_model(ref.adata)
@@ -373,17 +385,30 @@ class ScpoliTrainer(Trainer):
         pass
 
     def run(self):
+        # scancel -u fatemehs.hashemig
         if not self.only_eval:
-            self.train()
+            
+            if self.semi_supervised:
+                self.train_semi_supervised()
+            else:
+                self.train()
         if self.linear_eval:
             self.kfold_linear_evaluation()
 
         self.plot_ref_umap()
         self.plot_query_umap()
         self.additional_plots()
+        self.save_scib_metrics()
+
+    def train_semi_supervised(self):
+        pass
 
     def encode_ref(self, model=None):
         return self.encode_adata(self.ref.adata, model)
+
+    def encode_query(self):
+        model = self.load_query_model()
+        return self.encode_adata(self.query.adata, model)
 
     def encode_adata(self, adata, model=None):
         if model is None:
@@ -437,6 +462,26 @@ class ScpoliTrainer(Trainer):
 
     def additional_plots(self):
         pass
+
+    def get_scib_file_path(self, split):
+        pass
+    
+    def check_scib_metrics_exist(self):
+        path = self.get_scib_file_path('ref')
+        if os.path.exists(path):
+            print(path, ' exists')
+            return True
+        return False
+    
+    def save_scib_metrics(self):
+        ref_latent = self.encode_ref()
+        calculate_scib_metrics_using_benchmarker(
+            self.ref.adata, ref_latent, self.get_scib_file_path('ref')
+        )
+        query_latent = self.encode_query()
+        calculate_scib_metrics_using_benchmarker(
+            self.query.adata, query_latent, self.get_scib_file_path('query')
+        )
 
 
 class ScpoliProtBarlowTrainer(ScpoliTrainer):

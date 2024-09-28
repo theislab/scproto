@@ -19,7 +19,7 @@ from interpretable_ssl.utils import (
 )
 from interpretable_ssl.datasets.dataset import SingleCellDataset
 from interpretable_ssl.datasets.immune import ImmuneDataset
-from interpretable_ssl.evaluation.scib_metrics import calculate_scib_metrics
+from interpretable_ssl.evaluation.scib_metrics import calculate_scib_metrics_using_benchmarker
 from interpretable_ssl.trainers.base import TrainerBase
 
 
@@ -178,12 +178,12 @@ class Trainer(TrainerBase):
 
     def scib_metrics_all(self):
         _, _, latent = self.get_ref_query_latent()
-        df, _ = calculate_scib_metrics(self.dataset.adata, latent)
+        df, _ = calculate_scib_metrics_using_benchmarker(self.dataset.adata, latent)
         return df
 
     def query_scib_metrics(self):
         _, query, _ = self.get_ref_query_latent()
-        df, _ = calculate_scib_metrics(self.query.adata, query)
+        df, _ = calculate_scib_metrics_using_benchmarker(self.query.adata, query)
         return df
 
     def train_custom_cross_val(self, epochs):

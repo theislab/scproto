@@ -5,6 +5,7 @@ import torch
 # possibly a projection head
 # prototype layer
 
+
 class SwavBase(nn.Module):
     def __init__(self, scpoli_model, latent_dim, nmb_prototypes):
         super().__init__()
@@ -26,11 +27,11 @@ class SwavBase(nn.Module):
             x = nn.functional.normalize(x, dim=1, p=2)
 
         prot_decoding_loss = self.prototype_decoding_loss(x)
-        
+
         # TO DO: recheck this with priginal scpoli
         calc_alpha_coeff = 0.5
         cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
-        
+
         # return 2 x so it would be match the other model output
         return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
@@ -47,25 +48,35 @@ class SwavBase(nn.Module):
             self.reg1 * p_dist.min(1).values.mean()
             + self.reg2 * f_dist.min(1).values.mean()
         )
-    
+
     def set_scpoli_model(self, scpoli_model):
         self.scpoli_model = scpoli_model
-        
+
     def encode(self, batch):
         encoder_out, x, x_mapped, _, _ = self.forward(batch)
         return encoder_out, x, x_mapped
-    
+
     def get_prototypes(self):
         return self.prototypes.weight.data
-    
+
     def normalize_prototypes(self):
         w = self.get_prototypes().clone()
         w = nn.functional.normalize(w, dim=1, p=2)
         self.set_prototypes(w)
-        
+
     def set_prototypes(self, w):
         self.prototypes.weight.copy_(w)
-        
+
+
+def get_projector(input_dim, hidden_dim, output_dim):
+    return nn.Sequential(
+        nn.Linear(input_dim, hidden_dim),
+        nn.BatchNorm1d(hidden_dim),
+        nn.ReLU(inplace=True),
+        nn.Linear(hidden_dim, output_dim),
+    )
+
+
 class SwavModel(SwavBase):
     def __init__(
         self,
@@ -77,50 +88,27 @@ class SwavModel(SwavBase):
         swav_dim=None,
     ):
         super().__init__(scpoli_model, latent_dim, nmb_prototypes)
-        
-        self.prototypes = nn.Parameter(
-            torch.randn(nmb_prototypes, latent_dim), requires_grad=True
-        )
 
         if use_projector:
-            self.projection_head = nn.Sequential(
-                nn.Linear(latent_dim, hidden_mlp),
-                nn.BatchNorm1d(hidden_mlp),
-                nn.ReLU(inplace=True),
-                nn.Linear(hidden_mlp, swav_dim),
+            self.projection_head = get_projector(latent_dim, hidden_mlp, latent_dim)
+            self.prototype_projector = get_projector(swav_dim, hidden_mlp, latent_dim)
+            self.prototypes = nn.Parameter(
+                self.get_nn_linear_weights(nmb_prototypes, swav_dim), requires_grad=True
             )
         else:
             self.projection_head = None
-            
-        self.normalize_latent = True
+            self.prototype_projector = None
+            self.prototypes = nn.Parameter(
+                self.get_nn_linear_weights(nmb_prototypes, latent_dim), requires_grad=True
+            )
+
+    def get_nn_linear_weights(self, input_size, output_size):
+        # Create an nn.Linear layer without a bias term
+        linear_layer = nn.Linear(input_size, output_size, bias=False)
         
-        
-    def new_forward(self, batch):
-        encoder_out, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
-        encoder_out = nn.functional.normalize(x, dim=1, p=2)
-        
-        # TO DO: recheck this with priginal scpoli
-        calc_alpha_coeff = 0.5
-        cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
-
-        # interpretablity loss
-        prot_decoding_loss = self.prototype_decoding_loss(encoder_out)
-
-        if self.projection_head is not None:
-            x = self.projection_head(encoder_out)
-            prototypes = self.projection_head(self.prototypes)
-        else:
-            x = encoder_out
-            prototypes = self.prototypes
-
-        if self.l2norm:
-            x = nn.functional.normalize(x, dim=1, p=2)
-            prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
-
-        x_mapped = torch.matmul(x, prototypes.t())
-
-        # return x, self.prototypes(x), cvae_loss, prot_decoding_loss
-        return encoder_out, x, x_mapped, cvae_loss, prot_decoding_loss
+        # Retrieve the initialized weights from the nn.Linear layer
+        weight = linear_layer.weight.detach().clone()
+        return weight.t()
     
     def forward(self, batch):
         encoder_out, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
@@ -128,37 +116,37 @@ class SwavModel(SwavBase):
         # TO DO: recheck this with priginal scpoli
         calc_alpha_coeff = 0.5
         cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
-
-        # interpretablity loss
         prot_decoding_loss = self.prototype_decoding_loss(encoder_out)
 
         if self.projection_head is not None:
             x = self.projection_head(encoder_out)
-            prototypes = self.projection_head(self.prototypes)
         else:
             x = encoder_out
-            prototypes = self.prototypes
 
         if self.l2norm:
             x = nn.functional.normalize(x, dim=1, p=2)
-            prototypes = nn.functional.normalize(prototypes, dim=1, p=2)
 
-        x_mapped = torch.matmul(x, prototypes.t())
+        x_mapped = torch.matmul(x, self.prototypes.t())
 
         # return x, self.prototypes(x), cvae_loss, prot_decoding_loss
         return encoder_out, x, x_mapped, cvae_loss, prot_decoding_loss
 
     def get_prototypes(self):
         return self.prototypes.data
-    
+
+    def get_interpretable_prototypes(self):
+        if self.prototype_projector is not None:
+            return self.prototype_projector(self.prototypes)
+        return self.prototypes
+
     def set_prototypes(self, prototypes):
         return self.prototypes.copy_(prototypes)
 
     def prototype_distance(self, z: torch.Tensor):
-        return torch.cdist(z, self.get_prototypes())
+        return torch.cdist(z, self.get_interpretable_prototypes())
 
     def feature_vector_distance(self, z: torch.Tensor):
-        return torch.cdist(self.get_prototypes(), z)
+        return torch.cdist(self.get_interpretable_prototypes(), z)
 
     def prototype_decoding_loss(self, z):
         p_dist = self.prototype_distance(z)

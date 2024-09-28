@@ -23,7 +23,7 @@ from swav.src.utils import (
     AverageMeter,
 )
 
-from interpretable_ssl.trainers.scpoli_trainer import ScpoliTrainer
+from interpretable_ssl.trainers.adaptive_trainer import AdoptiveTrainer
 from interpretable_ssl.augmenters.adata_augmenter import *
 from scarches.models.scpoli import scPoli
 import scarches.trainers.scpoli._utils as scpoli_utils
@@ -38,18 +38,19 @@ from interpretable_ssl.configs.defaults import *
 
 logger = getLogger()
 
-class SwAV(ScpoliTrainer):
+
+class SwAV(AdoptiveTrainer):
     def __init__(self, parser=None, **kwargs):
         # Get default values for Swav
         self.default_values = get_swav_defaults()
-        
+
         kwargs = self.update_kwargs(parser, kwargs)
-        
+
         # Extract SwavTrainer-specific arguments
         scpoli_keys = get_scpoli_defaults().keys()
         scpoli_kwargs = {key: kwargs.pop(key) for key in scpoli_keys if key in kwargs}
         super().__init__(**scpoli_kwargs)
-        
+
         # Set specific attributes for SwavTrainer
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -58,35 +59,60 @@ class SwAV(ScpoliTrainer):
         self.set_experiment_name()
         self.create_dump_path()
         self.use_projector_out = False
-
-    def create_dump_path(self):
-        self.dump_path = self.get_dump_path()
-        if not os.path.exists(self.dump_path):
-            os.makedirs(self.dump_path)
-
+        self.get_model_name()
     def get_dump_path(self):
         dump_path = super().get_dump_path()
-        
-        if self.dump_name_version != 1 and self.dump_name_version<4:
+
+        if self.dump_name_version != 1 and self.dump_name_version < 4:
             dump_path = f"{dump_path}_aug{self.nmb_crops[0]}_latent{self.latent_dims}"
-  
+
         if self.dump_name_version > 2 and self.dump_name_version < 4:
             dump_path = f"{dump_path}_aug-type-{self.augmentation_type}"
-            
+
         if self.dump_name_version > 3:
             dump_path = f"{dump_path}_aug-{self.augmentation_type}{self.nmb_crops[0]}"
             dump_path = self.add_additional_parameters(dump_path)
-        
+
         return dump_path
 
     def add_additional_parameters(self, dump_path):
-        
-        # Add use_projector if it is true
-        dump_path = f'{dump_path}_ep{self.epsilon}'
+        """
+        Modify the dump_path based on specific attributes and a list of keys
+        if their current values differ from the default values.
+
+        Parameters
+        ----------
+        dump_path : str
+            The base path to modify.
+        keys_to_check : list or None
+            List of keys to check against their default values. If None, no additional keys are checked.
+
+        Returns
+        -------
+        str
+            The modified dump_path with additional parameters included if their values differ from the default.
+        """
+        # Preserve current functionality
+        dump_path = f"{dump_path}_ep{self.epsilon}"
         if self.use_projector:
-            dump_path = f"{dump_path}_use-projector_hmlp{self.hidden_mlp}_sdim{self.swav_dim}"
-        if self.default_values['model_version'] != self.model_version:
-            dump_path = f'{dump_path}_model-v{self.model_version}'
+            dump_path = (
+                f"{dump_path}_use-projector_hmlp{self.hidden_mlp}_sdim{self.swav_dim}"
+            )
+        if self.default_values["model_version"] != self.model_version:
+            dump_path = f"{dump_path}_model-v{self.model_version}"
+        if self.default_values["longest_path"] != self.longest_path:
+            dump_path = f"{dump_path}_lp{self.longest_path}"
+
+        keys_to_check = ["dimensionality_reduction", "k_neighbors"]
+        # Check additional keys, if provided
+        if keys_to_check:
+            for key in keys_to_check:
+                if key in self.default_values:
+                    current_value = getattr(self, key, None)
+                    default_value = self.default_values[key]
+                    if current_value != default_value:
+                        dump_path = f"{dump_path}_{key}-{current_value}"
+
         return dump_path
 
     def setup(self):
@@ -103,7 +129,7 @@ class SwAV(ScpoliTrainer):
         if self.experiment_name is not None:
             return
         if self.dump_name_version < 4:
-            return 
+            return
         if self.prot_decoding_loss_scaler == 0 and self.cvae_loss_scaler == 0:
             self.experiment_name = "swav-only"
         elif self.prot_decoding_loss_scaler > 0 and self.cvae_loss_scaler == 0:
@@ -112,9 +138,9 @@ class SwAV(ScpoliTrainer):
             self.experiment_name = "swav-all-loss"
         else:
             # Optionally handle any other case, or set a default value
-            self.experiment_name = 'swav'
-        self.experiment_name  = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
-                            
+            self.experiment_name = "swav"
+        self.experiment_name = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
+
     def init_scpoli(self):
 
         self.scpoli_ = scPoli(
@@ -136,7 +162,9 @@ class SwAV(ScpoliTrainer):
             train,
             self.nmb_crops[0],
             self.augmentation_type,
-            k_neighbors=10,
+            k_neighbors=self.k_neighbors,
+            longest_path=self.longest_path,
+            dimensionality_reduction=self.dimensionality_reduction,
             condition_keys=[self.condition_key],
             cell_type_keys=[self.cell_type_key],
             condition_encoders=model.condition_encoders,
@@ -151,30 +179,35 @@ class SwAV(ScpoliTrainer):
             pin_memory=True,
             drop_last=True,
             collate_fn=scpoli_utils.custom_collate,
-            shuffle = True
+            shuffle=True,
         )
         logger.info(f"Building data done with {len(self.train_ds)} images loaded.")
 
     def get_model(self):
         if self.model_version == 1:
-            return SwavBase(self.scpoli_.model, self.latent_dims, 
-                         self.num_prototypes)
+            return SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
         else:
-            return SwavModel(self.scpoli_.model, self.latent_dims, 
-                            self.num_prototypes, self.use_projector, self.hidden_mlp, self.swav_dim)
+            return SwavModel(
+                self.scpoli_.model,
+                self.latent_dims,
+                self.num_prototypes,
+                self.use_projector,
+                self.hidden_mlp,
+                self.swav_dim,
+            )
 
     def load_model(self):
         model = self.get_model()
-        checkpoint_path = os.path.join(self.dump_path, "checkpoint.pth.tar")
+        checkpoint_path = os.path.join(self.dump_path, self.get_checkpoint_file())
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(self.device)
-        
+
         # self.optimizer.load_state_dict(checkpoint["optimizer"])
         # model, _ = apex.amp.initialize(model, self.optimizer, opt_level="O1")
-        
+
         # model = apex.amp.initialize(model, opt_level="O1")
-        
+
         self.scpoli_.model = model.scpoli_model
         return model
 
@@ -199,7 +232,9 @@ class SwAV(ScpoliTrainer):
         warmup_lr_schedule = np.linspace(
             self.start_warmup, self.base_lr, len(self.train_loader) * self.warmup_epochs
         )
-        iters = np.arange(len(self.train_loader) * (self.epochs - self.warmup_epochs))
+        iters = np.arange(
+            len(self.train_loader) * (self.pretraining_epochs - self.warmup_epochs)
+        )
         cosine_lr_schedule = np.array(
             [
                 self.final_lr
@@ -210,7 +245,10 @@ class SwAV(ScpoliTrainer):
                     + math.cos(
                         math.pi
                         * t
-                        / (len(self.train_loader) * (self.epochs - self.warmup_epochs))
+                        / (
+                            len(self.train_loader)
+                            * (self.pretraining_epochs - self.warmup_epochs)
+                        )
                     )
                 )
                 for t in iters
@@ -227,7 +265,7 @@ class SwAV(ScpoliTrainer):
             )
             logger.info("Initializing mixed precision done.")
         else:
-            logger.info('no mixed precision')
+            logger.info("no mixed precision")
 
     def load_checkpoint(self):
         to_restore = {"epoch": 0}
@@ -240,7 +278,18 @@ class SwAV(ScpoliTrainer):
         )
         self.start_epoch = to_restore["epoch"]
 
+    def get_checkpoint_file(self):
+        if self.finetuning:
+            checkpoint_file = "finetuned-checkpoint.pth.tar"
+        elif self.semi_supervised:
+            checkpoint_file = "semi-pretrain-checkpoint.pth.tar"
+        else:
+            checkpoint_file = "checkpoint.pth.tar"
+        return checkpoint_file
+
     def save_checkpoint(self, epoch):
+        if self.debug:
+            return
         save_dict = {
             "epoch": epoch + 1,
             "state_dict": self.model.state_dict(),
@@ -248,10 +297,12 @@ class SwAV(ScpoliTrainer):
         }
         if self.use_fp16:
             save_dict["amp"] = apex.amp.state_dict()
-        torch.save(save_dict, os.path.join(self.dump_path, "checkpoint.pth.tar"))
-        if epoch % self.checkpoint_freq == 0 or epoch == self.epochs - 1:
+
+        checkpoint_file = self.get_checkpoint_file()
+        torch.save(save_dict, os.path.join(self.dump_path, checkpoint_file))
+        if epoch % self.checkpoint_freq == 0 or epoch == self.pretraining_epochs - 1:
             shutil.copyfile(
-                os.path.join(self.dump_path, "checkpoint.pth.tar"),
+                os.path.join(self.dump_path, checkpoint_file),
                 os.path.join(self.dump_path, f"ckp-{epoch}.pth"),
             )
 
@@ -266,10 +317,14 @@ class SwAV(ScpoliTrainer):
             }
         )
 
-    def train(self):
+    def train(self, epochs=None):
+        if self.check_scib_metrics_exist():
+            return
         self.init_wandb(self.dump_path, len(self.ref.adata), 0)
         cudnn.benchmark = True
-        for epoch in range(self.start_epoch, self.epochs):
+        if epochs is None:
+            epochs = self.pretraining_epochs
+        for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch} ... ============")
             if (
                 self.queue_length > 0
@@ -286,7 +341,10 @@ class SwAV(ScpoliTrainer):
             # self.training_stats.update(scores)
             self.log_wandb_loss(scores)
             self.save_checkpoint(epoch)
-        
+
+        if self.train_decoder:
+            self.only_decoder_train()
+
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -301,23 +359,28 @@ class SwAV(ScpoliTrainer):
         end = time.time()
         for iteration, inputs in enumerate(self.train_loader):
             data_time.update(time.time() - end)
-            bs = inputs['x'].size(0)
+            bs = inputs["x"].size(0)
             self.update_learning_rate(epoch, iteration)
-            
+
             # move same functionality inside model
-            
+
             with torch.no_grad():
                 self.model.normalize_prototypes()
-                # w = self.model.prototypes.weight.data.clone()
-                # w = nn.functional.normalize(w, dim=1, p=2)
-                # self.model.prototypes.weight.copy_(w)
-            
+
             inputs = self.move_input_on_device(inputs)
             inputs = reshape_and_reorder_dict(inputs)
-            _, projector_out, prot_mapped, cvae_loss, prot_decoding_loss = self.model(inputs)
+            _, projector_out, prot_mapped, cvae_loss, prot_decoding_loss = self.model(
+                inputs
+            )
             projector_out = projector_out.detach()
-            swav_loss = self.compute_swav_loss(projector_out, prot_mapped, bs, use_the_queue)
-            loss = swav_loss + cvae_loss * self.cvae_loss_scaler + prot_decoding_loss * self.prot_decoding_loss_scaler
+            swav_loss = self.compute_swav_loss(
+                projector_out, prot_mapped, bs, use_the_queue
+            )
+            loss = (
+                swav_loss
+                + cvae_loss * self.cvae_loss_scaler
+                + prot_decoding_loss * self.prot_decoding_loss_scaler
+            )
             self.optimizer.zero_grad()
 
             if self.use_fp16:
@@ -419,9 +482,9 @@ class SwAV(ScpoliTrainer):
             return model.projection_head(prototypes)
         else:
             return prototypes
-            
+
     def plot_by_augmentation(self, n_samples, n_augmentations):
-        print('using new plot augmentations, correct decoding')
+        print("using new plot augmentations, correct decoding")
         model = self.load_model()
         # Initialize the dataset with the entire adata
         self.train_ds.n_augmentations = n_augmentations
@@ -432,7 +495,9 @@ class SwAV(ScpoliTrainer):
 
         # Create a DataLoader for the sampled subset
         subset_dataset = Subset(self.train_ds, indices)
-        dataloader = DataLoader(subset_dataset, batch_size=self.batch_size, shuffle=False)
+        dataloader = DataLoader(
+            subset_dataset, batch_size=self.batch_size, shuffle=False
+        )
 
         # Initialize lists to store embeddings, labels, and study labels
         all_embeddings = []
@@ -464,37 +529,40 @@ class SwAV(ScpoliTrainer):
             all_embeddings.append(embeddings)
             all_labels.append(labels)
             all_celltypes.append(inputs["celltypes"].cpu().numpy())
-            all_study_labels.append(inputs["batch"].cpu().numpy())  # Extract study labels
+            all_study_labels.append(
+                inputs["batch"].cpu().numpy()
+            )  # Extract study labels
 
         # Concatenate all embeddings, labels, cell types, and study labels
         all_embeddings = np.concatenate(all_embeddings, axis=0)
         all_labels = np.concatenate(all_labels, axis=0)
         all_celltypes = np.concatenate(all_celltypes, axis=0)
-        all_study_labels = np.concatenate(all_study_labels, axis=0)  # Concatenate study labels
+        all_study_labels = np.concatenate(
+            all_study_labels, axis=0
+        )  # Concatenate study labels
 
         # Create a reverse dictionary for cell type decoding
         all_celltypes = all_celltypes.reshape(-1)
         cell_type_encoder = self.train_ds.cell_type_encoder
         reverse_cell_type_encoder = {v: k for k, v in cell_type_encoder.items()}
-        decoded_celltypes = np.array([reverse_cell_type_encoder[idx] for idx in all_celltypes])
+        decoded_celltypes = np.array(
+            [reverse_cell_type_encoder[idx] for idx in all_celltypes]
+        )
 
         cell_umap, prototype_umap = calculate_umap(all_embeddings)
         plot_umap(
-            cell_umap, 
-            prototype_umap, 
-            decoded_celltypes, 
+            cell_umap,
+            prototype_umap,
+            decoded_celltypes,
             all_study_labels.reshape(-1),  # Pass study labels to plot_umap
-            all_labels.reshape(-1)  # Optional augmentation labels
+            all_labels.reshape(-1),  # Optional augmentation labels
         )
-        
+
     def encode_batch(self, model, batch):
         batch = self.move_input_on_device(batch)
         model.eval()
         with torch.no_grad():
-            if self.model_version == 1:
-                encoder_out, _, _, _ = model(batch)
-            else:
-                encoder_out, x, x_mapped = model.encode(batch)
+            encoder_out, x, x_mapped = model.encode(batch)
         if self.use_projector_out:
             return x
         else:
@@ -512,16 +580,82 @@ class SwAV(ScpoliTrainer):
         query = self.plot_query_umap(save)
         self.use_projector_out = False
         return ref, query
-    
+
     def get_umap_path(self, data_part="ref"):
         if self.use_projector_out:
             return self.get_dump_path() + f"/{data_part}-projected-umap.png"
         return super().get_umap_path(data_part)
-    
+
     def additional_plots(self):
         if self.use_projector:
             return self.plot_projected_umap()
-    
+
+    def freeze_except_decoder(self, model):
+        """
+        Freeze all the weights of the model except those in the decoder.
+
+        Args:
+            model: The model whose weights need to be frozen.
+        """
+        # Iterate over all modules in the model
+        for name, param in model.named_parameters():
+            if "decoder" not in name:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+
+    def only_decoder_train(self):
+        # Freeze all parts of the model except the decoder
+        self.freeze_except_decoder(self.model)
+
+        # Initialize a separate optimizer for the decoder parameters
+        decoder_optimizer = torch.optim.SGD(
+            filter(lambda p: p.requires_grad, self.model.parameters()),
+            lr=self.base_lr,
+            momentum=0.9,
+            weight_decay=self.wd,
+        )
+        decoder_optimizer = LARC(
+            optimizer=decoder_optimizer, trust_coefficient=0.001, clip=False
+        )
+
+        cvae_losses = AverageMeter()
+
+        for epoch in range(self.pretraining_epochs):
+            for iteration, inputs in enumerate(self.train_loader):
+                inputs = self.move_input_on_device(inputs)
+                inputs = reshape_and_reorder_dict(inputs)
+                _, _, _, cvae_loss, _ = self.model(inputs)  # Modify as needed
+                decoder_optimizer.zero_grad()
+
+                if self.use_fp16:
+                    with apex.amp.scale_loss(
+                        cvae_loss, decoder_optimizer
+                    ) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    cvae_loss.backward()
+
+                decoder_optimizer.step()
+                cvae_losses.update(cvae_loss.item(), inputs["x"].size(0))
+
+            # Log the average loss for this epoch
+            wandb.log({"decoder loss": cvae_losses.avg})
+
+            logger.info(
+                f"Epoch: [{epoch+1}/{self.pretraining_epochs}]\t"
+                f"Decoder Loss {cvae_losses.val:.4f} ({cvae_losses.avg:.4f})"
+            )
+
+    def finetune(self):
+        old_aug_type = self.augmentation_type
+        self.augmentation_type = "cell_type"
+        self.build_data()
+        self.build_optimizer()
+        self.train(self.fine_tuning_epochs)
+        self.augmentation_type = old_aug_type
+
+
 if __name__ == "__main__":
     swav = SwAV()
     swav.setup()
