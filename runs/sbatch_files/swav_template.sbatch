@@ -17,4 +17,5 @@ python main.py swav --num_prototypes {num_prototypes} --latent_dims {latent_dims
 --augmentation_type {augmentation_type} --epsilon {epsilon} --cvae_loss_scaler {cvae_loss_scaler} \
 --prot_decoding_loss_scaler {prot_decoding_loss_scaler} --model_version {model_version} \
 --dimensionality_reduction {dimensionality_reduction} --k_neighbors {k_neighbors} --experiment_name {experiment_name} \
---fine_tuning_epochs {fine_tuning_epochs} --pretraining_epochs {pretraining_epochs} --training_type {training_type}
+--fine_tuning_epochs {fine_tuning_epochs} --pretraining_epochs {pretraining_epochs} --training_type {training_type} \
+--dataset_id {dataset_id} --workers {workers} --job_name {job_name}

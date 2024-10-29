@@ -13,7 +13,6 @@ class SwavBase(nn.Module):
         self.prototypes = nn.Linear(latent_dim, nmb_prototypes, bias=False)
         self.projection_head = None
         self.l2norm = True
-        print("swav model with l2n init")
         self.reg1 = 0.5
         self.reg2 = 0.5
 

@@ -1,0 +1,1 @@
+MODEL_DIR = "/home/icb/fatemehs.hashemig/models/"

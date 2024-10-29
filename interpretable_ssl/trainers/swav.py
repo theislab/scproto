@@ -7,13 +7,11 @@ from logging import getLogger
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.optim
 import apex
 from apex.parallel.LARC import LARC
-from sklearn.model_selection import KFold
 
 from swav.src.utils import (
     bool_flag,
@@ -35,88 +33,86 @@ import torch
 from torch.utils.data import DataLoader, Subset
 import numpy as np
 from interpretable_ssl.configs.defaults import *
+import sys
+from interpretable_ssl.utils import log_time
 
 logger = getLogger()
 
 
 class SwAV(AdoptiveTrainer):
-    def __init__(self, parser=None, **kwargs):
-        # Get default values for Swav
-        self.default_values = get_swav_defaults()
 
-        kwargs = self.update_kwargs(parser, kwargs)
+    # @log_time('swav')
+    def __init__(
+        self, debug=False, dataset=None, ref_query=None, parser=None, **kwargs
+    ):
 
-        # Extract SwavTrainer-specific arguments
-        scpoli_keys = get_scpoli_defaults().keys()
-        scpoli_kwargs = {key: kwargs.pop(key) for key in scpoli_keys if key in kwargs}
-        super().__init__(**scpoli_kwargs)
-
-        # Set specific attributes for SwavTrainer
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-        self.default_values = get_swav_defaults()
+        self.is_swav = 1
+        super().__init__(debug, dataset, ref_query, parser, **kwargs)
         self.nmb_prototypes = self.num_prototypes
-        self.set_experiment_name()
-        self.create_dump_path()
         self.use_projector_out = False
-        self.get_model_name()
-    def get_dump_path(self):
-        dump_path = super().get_dump_path()
+        # would be defferent when trying to finetune, keep original aug type for model path
+        self.train_augmentation = self.augmentation_type
+        # self.set_experiment_name()
 
-        if self.dump_name_version != 1 and self.dump_name_version < 4:
-            dump_path = f"{dump_path}_aug{self.nmb_crops[0]}_latent{self.latent_dims}"
+    # def get_dump_path(self):
+    #     dump_path = super().get_dump_path()
 
-        if self.dump_name_version > 2 and self.dump_name_version < 4:
-            dump_path = f"{dump_path}_aug-type-{self.augmentation_type}"
+    #     if self.dump_name_version != 1 and self.dump_name_version < 4:
+    #         dump_path = f"{dump_path}_aug{self.nmb_crops[0]}_latent{self.latent_dims}"
 
-        if self.dump_name_version > 3:
-            dump_path = f"{dump_path}_aug-{self.augmentation_type}{self.nmb_crops[0]}"
-            dump_path = self.add_additional_parameters(dump_path)
+    #     if self.dump_name_version > 2 and self.dump_name_version < 4:
+    #         dump_path = f"{dump_path}_aug-type-{self.augmentation_type}"
 
-        return dump_path
+    #     if self.dump_name_version > 3:
+    #         dump_path = f"{dump_path}_aug-{self.augmentation_type}{self.nmb_crops[0]}"
+    #         dump_path = self.add_additional_parameters(dump_path)
 
-    def add_additional_parameters(self, dump_path):
-        """
-        Modify the dump_path based on specific attributes and a list of keys
-        if their current values differ from the default values.
+    #     return dump_path
 
-        Parameters
-        ----------
-        dump_path : str
-            The base path to modify.
-        keys_to_check : list or None
-            List of keys to check against their default values. If None, no additional keys are checked.
+    # def add_additional_parameters(self, dump_path):
+    #     """
+    #     Modify the dump_path based on specific attributes and a list of keys
+    #     if their current values differ from the default values.
 
-        Returns
-        -------
-        str
-            The modified dump_path with additional parameters included if their values differ from the default.
-        """
-        # Preserve current functionality
-        dump_path = f"{dump_path}_ep{self.epsilon}"
-        if self.use_projector:
-            dump_path = (
-                f"{dump_path}_use-projector_hmlp{self.hidden_mlp}_sdim{self.swav_dim}"
-            )
-        if self.default_values["model_version"] != self.model_version:
-            dump_path = f"{dump_path}_model-v{self.model_version}"
-        if self.default_values["longest_path"] != self.longest_path:
-            dump_path = f"{dump_path}_lp{self.longest_path}"
+    #     Parameters
+    #     ----------
+    #     dump_path : str
+    #         The base path to modify.
+    #     keys_to_check : list or None
+    #         List of keys to check against their default values. If None, no additional keys are checked.
 
-        keys_to_check = ["dimensionality_reduction", "k_neighbors"]
-        # Check additional keys, if provided
-        if keys_to_check:
-            for key in keys_to_check:
-                if key in self.default_values:
-                    current_value = getattr(self, key, None)
-                    default_value = self.default_values[key]
-                    if current_value != default_value:
-                        dump_path = f"{dump_path}_{key}-{current_value}"
+    #     Returns
+    #     -------
+    #     str
+    #         The modified dump_path with additional parameters included if their values differ from the default.
+    #     """
+    #     # Preserve current functionality
+    #     dump_path = f"{dump_path}_ep{self.epsilon}"
+    #     if self.use_projector:
+    #         dump_path = (
+    #             f"{dump_path}_use-projector_hmlp{self.hidden_mlp}_sdim{self.swav_dim}"
+    #         )
+    #     if self.default_values["model_version"] != self.model_version:
+    #         dump_path = f"{dump_path}_model-v{self.model_version}"
+    #     if self.default_values["longest_path"] != self.longest_path:
+    #         dump_path = f"{dump_path}_lp{self.longest_path}"
 
-        return dump_path
+    #     keys_to_check = ["dimensionality_reduction", "k_neighbors"]
+    #     # Check additional keys, if provided
+    #     if keys_to_check:
+    #         for key in keys_to_check:
+    #             if key in self.default_values:
+    #                 current_value = getattr(self, key, None)
+    #                 default_value = self.default_values[key]
+    #                 if current_value != default_value:
+    #                     dump_path = f"{dump_path}_{key}-{current_value}"
 
+    #     return dump_path
+    
     def setup(self):
         fix_random_seeds(self.seed)
+        self.dump_path = self.get_dump_path()
+        self.create_dump_path()
         logger, self.training_stats = initialize_exp(self, "epoch", "loss")
         self.init_scpoli()
         self.build_data()
@@ -124,22 +120,6 @@ class SwAV(AdoptiveTrainer):
         self.build_optimizer()
         self.init_mixed_precision()
         self.load_checkpoint()
-
-    def set_experiment_name(self):
-        if self.experiment_name is not None:
-            return
-        if self.dump_name_version < 4:
-            return
-        if self.prot_decoding_loss_scaler == 0 and self.cvae_loss_scaler == 0:
-            self.experiment_name = "swav-only"
-        elif self.prot_decoding_loss_scaler > 0 and self.cvae_loss_scaler == 0:
-            self.experiment_name = "swav-interpretable"
-        elif self.prot_decoding_loss_scaler > 0 and self.cvae_loss_scaler > 0:
-            self.experiment_name = "swav-all-loss"
-        else:
-            # Optionally handle any other case, or set a default value
-            self.experiment_name = "swav"
-        self.experiment_name = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
 
     def init_scpoli(self):
 
@@ -155,13 +135,14 @@ class SwAV(AdoptiveTrainer):
 
         # train, val = self.split_train_test(self.ref)
         # self.train_adata, self.val_adata = train, val
-        train = self.ref.adata
+
         # why nmb_crops is a list? i used fisrt element but not change it in case needed in furure
         model = self.scpoli_.model
         self.train_ds = MultiCropsDataset(
-            train,
+            self.ref.adata,
+            self.ref.original_idx,
             self.nmb_crops[0],
-            self.augmentation_type,
+            self.train_augmentation,
             k_neighbors=self.k_neighbors,
             longest_path=self.longest_path,
             dimensionality_reduction=self.dimensionality_reduction,
@@ -172,7 +153,11 @@ class SwAV(AdoptiveTrainer):
             cell_type_encoder=model.cell_type_encoder,
         )
 
-        self.train_loader = DataLoader(
+        self.train_loader = self.get_data_laoder()
+        logger.info(f"Building data done with {len(self.train_ds)} images loaded.")
+
+    def get_data_laoder(self):
+        return DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
             num_workers=self.workers,
@@ -181,7 +166,6 @@ class SwAV(AdoptiveTrainer):
             collate_fn=scpoli_utils.custom_collate,
             shuffle=True,
         )
-        logger.info(f"Building data done with {len(self.train_ds)} images loaded.")
 
     def get_model(self):
         if self.model_version == 1:
@@ -196,9 +180,12 @@ class SwAV(AdoptiveTrainer):
                 self.swav_dim,
             )
 
+    def get_model_path(self):
+        return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
+
     def load_model(self):
         model = self.get_model()
-        checkpoint_path = os.path.join(self.dump_path, self.get_checkpoint_file())
+        checkpoint_path = self.get_model_path()
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint["state_dict"])
         model.to(self.device)
@@ -281,7 +268,7 @@ class SwAV(AdoptiveTrainer):
     def get_checkpoint_file(self):
         if self.finetuning:
             checkpoint_file = "finetuned-checkpoint.pth.tar"
-        elif self.semi_supervised:
+        elif self.training_type == "semi_supervised":
             checkpoint_file = "semi-pretrain-checkpoint.pth.tar"
         else:
             checkpoint_file = "checkpoint.pth.tar"
@@ -318,9 +305,10 @@ class SwAV(AdoptiveTrainer):
         )
 
     def train(self, epochs=None):
+        self.create_dump_path()
         if self.check_scib_metrics_exist():
             return
-        self.init_wandb(self.dump_path, len(self.ref.adata), 0)
+        self.init_wandb(self.dump_path)
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
@@ -344,6 +332,12 @@ class SwAV(AdoptiveTrainer):
 
         if self.train_decoder:
             self.only_decoder_train()
+
+        self.save_metrics()
+
+    def refine_inputs(self, inputs):
+        if self.train_ds.augmentation_type == "batch_knn":
+            inputs = sel
 
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
@@ -648,18 +642,34 @@ class SwAV(AdoptiveTrainer):
             )
 
     def finetune(self):
-        old_aug_type = self.augmentation_type
-        self.augmentation_type = "cell_type"
-        self.build_data()
-        self.build_optimizer()
+        # old_aug_type = self.augmentation_type
+
+        scpoli_query = scPoli.load_query_data(
+            adata=self.ref.adata,
+            reference_model=self.get_scpoli(),
+            labeled_indices=[],
+        )
+        self.model.set_scpoli_model(scpoli_query.model)
+
+        self.train_augmentation = "cell_type"
+        self.setup()
         self.train(self.fine_tuning_epochs)
-        self.augmentation_type = old_aug_type
+        # self.augmentation_type = old_aug_type
+
+    def tune_nmb_crops(self, adata_list):
+        max_nmb_crops = sys.maxsize
+
+        for adata in adata_list:
+            min_cell_cnt = adata.obs.cell_type.value_counts().min()
+            max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
+        self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
 
 
 if __name__ == "__main__":
     swav = SwAV()
     swav.setup()
     swav.run()
+    swav.encode_ref()
 
 
 # Example usage

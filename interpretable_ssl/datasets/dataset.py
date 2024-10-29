@@ -1,28 +1,17 @@
 import scanpy as sc
 from torch.utils.data import Dataset
 import torch
-from torch.utils.data import random_split
 from sklearn.model_selection import train_test_split
 import interpretable_ssl.utils as utils
-import random
 import pickle as pkl
-from copy import deepcopy
-import numpy as np
-
 import inspect
+from interpretable_ssl.utils import log_time
+
+
 class SingleCellDataset(Dataset):
 
-    def __init__(
-        self,
-        name,
-        adata=None,
-        use_pca=False,
-        self_supervised=False,
-        multiple_augment_cnt=None,
-        label_encoder_path=None,
-        **kwargs,
-    ):
-        self.device = utils.get_device()
+    def __init__(self, name, adata=None, label_encoder_path=None, original_idx=None):
+        # self.device = utils.get_device()
         self.name = name
         if not adata:
             self.adata = self.read_adata()
@@ -30,46 +19,20 @@ class SingleCellDataset(Dataset):
             self.adata = adata
         self.label_encoder_path = label_encoder_path
         self.le = self.load_label_encoder()
-        self.use_pca = use_pca
-        # self.x = self.get_x()
-        # self.y = self.get_y()
+
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
-        self.self_supervised = self_supervised
-        self.multiple_augment_cnt = multiple_augment_cnt
-        
-           # Store the initialization arguments
+
+        # Store the initialization arguments
         self.init_args = {
-            'name': name,
-            'adata': adata,
-            'use_pca': use_pca,
-            'self_supervised': self_supervised,
-            'multiple_augment_cnt': multiple_augment_cnt,
-            'label_encoder_path': label_encoder_path,
+            "name": name,
+            "adata": adata,
+            "label_encoder_path": label_encoder_path,
         }
-        self.init_args.update(kwargs)
 
-    def partial_fit_le(self, new_cells):
-        new_labels = set(new_cells) - set(self.le.classes_)
-
-        if new_labels:
-            # Add new labels to the existing ones
-            all_labels = np.concatenate([self.le.classes_, list(new_labels)])
-            self.le.classes_ = np.unique(all_labels)
-
-    def set_adata(self, adata):
-        self.adata = adata
-        self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
-        self.x_dim = self.adata[0].X.shape[1]
-
-        # Make a copy of the AnnData object if it is a view
-        if self.adata.is_view:
-            self.adata = self.adata.copy()
-
-        # Now modify the obs attribute
-        self.adata.obs["encoded_cell_type"] = self.le.transform(
-            self.adata.obs.cell_type
-        )
+        self.original_idx = original_idx
+        if self.original_idx is None:
+            self.original_idx = list(range(len(self.adata)))
 
     def __str__(self) -> str:
         return self.name
@@ -79,126 +42,33 @@ class SingleCellDataset(Dataset):
 
     def read_adata(self):
         data_path = self.get_data_path()
-        print("loading data")
+        print(f'loading {str(self)} data')
         data = sc.read_h5ad(data_path)
+        print('done')
         return data
 
     def load_label_encoder(self):
         return pkl.load(open(self.label_encoder_path, "rb"))
 
-    # def set_use_pca(self, use_pca):
-    #     self.use_pca = use_pca
-    #     self.x = self.get_x()
-    #     self.y = self.get_y()
-
     def __len__(self):
         return len(self.adata)
 
     def __getitem__(self, idx):
-        if self.self_supervised:
-            return self.get_self_supervised_item(idx)
-        else:
-            x = self.get_x(idx).squeeze(0)
-            y = self.get_y(idx).squeeze(0)
-            return x, y
-
-    def get_self_supervised_item(self, idx):
-        if self.multiple_augment_cnt is not None:
-            return self.get_multi_crops_item(idx)
-        else:
-            x1 = self.get_x(idx).squeeze(0)
-            cell_type = self.adata[idx].obs.cell_type
-            x2 = self.augment(cell_type).squeeze(0)
-            return x1, x2
-
-    def get_multi_crops_item(self, idx):
-        cell_type = self.adata[idx].obs.cell_type
-        # Original item
-        x = self.get_x(idx).to(self.device)
-        # Augmented versions
-        augmented_versions = [
-            self.augment(cell_type).squeeze(0)
-            for _ in range(self.multiple_augment_cnt - 1)
-        ]
-        # Combine original item with augmented versions
-        all_versions = [x] + augmented_versions
-        all_versions = torch.stack(all_versions)
-        all_versions = all_versions.to(self.device)
-        return all_versions
+        x = self.get_x(idx).squeeze(0)
+        y = self.get_y(idx).squeeze(0)
+        return x, y
 
     def get_study_ids(self):
         study_ids = self.adata.obs.study.unique()
         return study_ids
 
-    def get_fold_train_test(self, train_study_index, test_study_index):
-        study_ids = self.get_study_ids()
-        train_studies = study_ids[train_study_index]
-        test_studies = study_ids[test_study_index]
-        train_idx = self.adata.obs.study.isin(train_studies)
-        test_idx = self.adata.obs.study.isin(test_studies)
-
-        train, test = self.adata[train_idx], self.adata[test_idx]
-        train_ds, test_ds = deepcopy(self), deepcopy(self)
-        train_ds.set_adata(train)
-        test_ds.set_adata(test)
-        return train_ds, test_ds
-
-    def get_train_test(self):
-        pass
-
-    def get_train_test_random(self):
-        # return random_split(
-        #     self, [0.7, 0.3], generator=torch.Generator().manual_seed(42)
-        # )
-
-        # Assuming 'batch' or 'sample' are the columns used for splitting
-        # You can change 'batch' to any other column that you want to use for the split
-        if "study" in self.adata.obs.columns:
-            labels = self.adata.obs["study"]
-        else:
-            # If 'batch' does not exist, fall back to splitting cells directly
-            labels = self.adata.obs_names
-        # Split indices
-        train_idx, test_idx = train_test_split(
-            range(len(self.adata)), test_size=0.2, random_state=42, stratify=labels
-        )
-
-        # Split the AnnData object
-        adata_train = self.adata[train_idx].copy()
-        adata_test = self.adata[test_idx].copy()
-
-        train_ds, test_ds = deepcopy(self), deepcopy(self)
-        train_ds.set_adata(adata_train)
-        test_ds.set_adata(adata_test)
-        return train_ds, test_ds
-
     def get_x(self, i):
-        if self.use_pca:
-            x = self.adata[i].obsm["X_pca"]
-        else:
-            x = self.adata[i].X.toarray()
-        return torch.tensor(x, device=self.device)
-
-    def get_x_all(self):
-        x = self.adata.X.toarray()
-        return torch.tensor(x, device=self.device)
+        x = self.adata[i].X.toarray()
+        return torch.tensor(x)
 
     def get_y(self, i):
         y = self.le.transform(self.adata[i].obs["cell_type"])
-        return torch.tensor(y, device=self.device)
-
-    def augment(self, cell_type):
-        if len(cell_type) > 1:
-            res = [self.augment(cell) for cell in cell_type]
-            return torch.tensor(res, device=self.device)
-        if type(cell_type) != str:
-
-            cell_type = cell_type.iloc[0]
-        adata = self.adata
-        all_cells = adata[adata.obs.cell_type == cell_type]
-        rand_idx = random.randint(0, len(all_cells) - 1)
-        x = all_cells[rand_idx].X.toarray()
-        return torch.tensor(x, device=self.device)
+        return torch.tensor(y)
 
     def split(self, test_size=0.2, random_state=None):
         """Split the dataset into train and test datasets."""
@@ -212,18 +82,31 @@ class SingleCellDataset(Dataset):
 
     def _create_split_instance(self, indices):
         """Create a new instance of the current class with the given indices of adata."""
-        adata_split = self.adata[indices].copy()
+        # adata_split = self.adata[indices].copy()
+        adata_split = self.adata[indices]
 
         # Get the signature of the __init__ method of the current class
         init_signature = inspect.signature(self.__class__.__init__)
 
         # Filter the init_args to include only those that are accepted by the __init__ method
         filtered_args = {
-            key: value for key, value in self.init_args.items()
+            key: value
+            for key, value in self.init_args.items()
             if key in init_signature.parameters
         }
 
         # Update the adata in the arguments
-        filtered_args['adata'] = adata_split
-
+        filtered_args["adata"] = adata_split
+        filtered_args["original_idx"] = indices
         return self.__class__(**filtered_args)
+
+    @log_time('get train test')
+    def get_train_test(self):
+        test_studies = self.get_test_studies()
+        test_idx = self.adata.obs.study.isin(test_studies)
+        return self._create_split_instance(~test_idx), self._create_split_instance(
+            test_idx
+        )
+
+    def get_test_studies(self):
+        pass

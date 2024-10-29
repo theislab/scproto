@@ -23,15 +23,6 @@ def add_trainer_parser_args(parser):
 
     return parser
 
-def add_scpoli_parser_args(parser):
-    parser = add_trainer_parser_args(parser)
-    defaults = get_scpoli_defaults()
-    parser = set_parser_defaults(parser, defaults)
-    parser.add_argument("--experiment_name", type=str, default=defaults['experiment_name'])
-    parser.add_argument("--use_weighted_sampling", type=bool, default=defaults['use_weighted_sampling'])
-    
-    return parser
-
 def add_swav_parser_args(parser):
     # parser = add_scpoli_parser_args(parser)
     defaults = get_swav_defaults()

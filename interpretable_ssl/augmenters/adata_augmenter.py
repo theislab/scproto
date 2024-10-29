@@ -6,15 +6,21 @@ import scanpy as sc
 import scipy.stats as stats
 from sklearn.decomposition import PCA
 import logging
+import random
+
+from torch.utils.data import get_worker_info
+from interpretable_ssl.augmenters.graph_handler import GraphHandler
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class MultiCropsDataset(MultiConditionAnnotatedDataset):
     def __init__(
         self,
         adata,
+        original_indicies,
         n_augmentations,
         augmentation_type="cell_type",
         k_neighbors=10,  # seacell use 50
@@ -53,30 +59,85 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.dimensionality_reduction = dimensionality_reduction
         self.n_components = n_components
         self.knn_graph = None
+        
+        self.graph_handler = GraphHandler(original_indicies)
+
         super().__init__(adata, **kwargs)
 
+    def get_random_indices(self, n, specific_index):
+        """
+        Returns a list of n random indices including a specific index.
+
+        Args:
+            dataset_size (int): Total number of samples in the dataset.
+            n (int): Number of random indices to return.
+            specific_index (int): The specific index that must be included.
+
+        Returns:
+            list: A list of n random indices, including the specific index.
+        """
+        dataset_size = len(self.adata)
+        # Ensure n is valid
+        if n > dataset_size:
+            raise ValueError("n cannot be greater than the dataset size")
+
+        # Get a random sample of indices excluding the specific index
+        indices = random.sample(
+            [i for i in range(dataset_size) if i != specific_index], n - 1
+        )
+
+        # Append the specific index to the list
+        indices.append(specific_index)
+        return indices
 
     def build_knn_graph(self):
+        logger.info(f"building knn graph")
+        # can be used for random sampling
+        indicies = None
+        if self.augmentation_type == "knn":
+            graph = self._build_knn_graph_with_sklearn(indicies)
+            return graph
+
+        elif self.augmentation_type == "scanpy_knn":
+            graph = self._build_knn_graph_with_scanpy(indicies)
+            return graph
+
+        else:
+            logger.log("specified knn method not implemented")
+            return None
+
+    def _build_knn_graph_with_sklearn(self, indices=None):
         """
         Build a k-nearest neighbors graph based on the expression profiles using sklearn's NearestNeighbors.
         """
-        logger.info("Starting to build k-nearest neighbors graph.")
-        
-        X = self.adata.X
+        if indices is None:
+            X = self.adata.X
+        else:
+            X = self.adata[indices].X
+        worker_info = get_worker_info()
+        if worker_info is not None:
+            worker_id = worker_info.id
+        else:
+            worker_id = None
+        logger.info(
+            f"wid: {worker_id} Constructing NearestNeighbors with k={self.k_neighbors + 1} on x with shape: {X.shape}"
+        )
 
-        logger.info(f"Constructing NearestNeighbors with k={self.k_neighbors + 1}.")
-        
-        nbrs = NearestNeighbors(n_neighbors=self.k_neighbors + 1, algorithm="auto").fit(X)
+        nbrs = NearestNeighbors(n_neighbors=self.k_neighbors + 1, algorithm="auto").fit(
+            X
+        )
         distances, indices = nbrs.kneighbors(X)
-        
+
         logger.debug("NearestNeighbors fitting completed.")
-        
+
         # Exclude the first neighbor for each node, which is the node itself
         indices = indices[:, 1:]
         distances = distances[:, 1:]
-        
+
         logger.info("k-nearest neighbors graph construction completed.")
-        logger.debug(f"indices shape: {indices.shape}, distances shape: {distances.shape}")
+        logger.debug(
+            f"indices shape: {indices.shape}, distances shape: {distances.shape}"
+        )
 
         return indices, distances
 
@@ -91,9 +152,12 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
             logger.info(f"Performing PCA with n_components={self.n_components}.")
             sc.tl.pca(self.adata, n_comps=self.n_components)
-            logger.debug(f"PCA completed. Shape of data after PCA: {self.adata.obsm['X_pca'].shape}")
+            logger.debug(
+                f"PCA completed. Shape of data after PCA: {self.adata.obsm['X_pca'].shape}"
+            )
 
-    def _build_knn_graph_with_scanpy(self):
+    # TODO: implement indices
+    def _build_knn_graph_with_scanpy(self, indices=None):
         """
         Build the k-nearest neighbors graph using Scanpy.
         """
@@ -115,7 +179,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         distances = []
 
         logger.info("Processing the kNN graph to extract indices and distances.")
-        
+
         for i in range(knn_graph.shape[0]):
             nonzero_indices = knn_graph[i].nonzero()[1]
             nonzero_distances = knn_graph[i, nonzero_indices].toarray().flatten()
@@ -128,7 +192,9 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         indices = np.array(indices)
         distances = np.array(distances)
 
-        logger.debug(f"indices shape: {indices.shape}, distances shape: {distances.shape}")
+        logger.debug(
+            f"indices shape: {indices.shape}, distances shape: {distances.shape}"
+        )
 
         return indices, distances
 
@@ -153,32 +219,47 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         logger.info("Performing Leiden community detection.")
         sc.tl.leiden(self.adata, key_added="leiden_community")
-        
+
         logger.debug("Leiden community detection completed.")
-        self.adata.obs["leiden_community"] = self.adata.obs["leiden_community"].astype("category")
+        self.adata.obs["leiden_community"] = self.adata.obs["leiden_community"].astype(
+            "category"
+        )
         logger.info("Community labels assigned to the cells.")
 
     def random_walk(self, start_index):
         """
         Perform a random walk on the kNN graph starting from the given index.
         """
+
         current_index = start_index
         path_length = np.random.randint(1, self.longest_path + 1)
         indices, distances = self.knn_graph
 
         for _ in range(path_length):
-            neighbors = indices[current_index][1:]  # Skip the first neighbor (itself)
-            weights = distances[current_index][1:]
+            neighbors = indices[current_index]
+            weights = distances[current_index]
             weights = weights / weights.sum()  # Normalize weights
             next_index = np.random.choice(neighbors, p=weights)
             current_index = next_index
 
         return current_index
 
+    def set_graph(self):
+        if self.knn_graph is None:
+            if self.graph_handler.generate_graph():
+                self.knn_graph = self.build_knn_graph()
+            else:
+                self.knn_graph = self.graph_handler.load_graph()
+                
     def knn_augment(self, index):
-        augmented_indices = [index]  # Start with the original index
+        self.set_graph()
+        knn_index = self.graph_handler.map_graph_index(index)
+        augmented_indices = [knn_index]  # Start with the original index
         for _ in range(self.n_augmentations - 1):
-            augmented_indices.append(self.random_walk(index))
+            augmented_indices.append(self.random_walk(knn_index))
+        augmented_indices = [
+            self.graph_handler.get_adata_index(knn_idx) for knn_idx in augmented_indices
+        ]
         return augmented_indices
 
     def community_augment(self, index):
@@ -255,20 +336,17 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         """Augment a single cell by sampling from the same cell type, performing a random walk on the kNN graph, or adding negative binomial noise."""
         if self.augmentation_type == "cell_type":
             return self.cell_type_augment(index)
-        elif self.augmentation_type == "knn":
-            if self.knn_graph is None:
-                self.knn_graph = self.build_knn_graph()
+        elif self.augmentation_type == "knn" or self.augmentation_type == "scanpy_knn":
+
             return self.knn_augment(index)
-        elif self.augmentation_type == "scanpy_knn":
-            if self.knn_graph is None:
-                self.knn_graph = self.build_scanpy_knn_graph()
-            return self.knn_augment(index)
+
         elif self.augmentation_type == "community":
             if "leiden_community" not in self.adata.obs:
                 self.build_community_graph()
             return self.community_augment(index)
         elif self.augmentation_type == "nb":
             return self.negative_binomial_augment(index)
+        # elif self.augmentation_type
         else:
             raise ValueError(f"Invalid augmentation_type: {self.augmentation_type}")
 
@@ -279,6 +357,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         elif isinstance(index, slice):
             # Slice of indices
             indices = range(*index.indices(len(self)))
+
             augmented_data_list = []
             for idx in indices:
                 augmented_data_list.extend(self.augment_on_the_fly(idx))
@@ -304,6 +383,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             "sizefactor",
             "batch",
             "combined_batch",
+            # "study",
             "celltypes",
         ]
 

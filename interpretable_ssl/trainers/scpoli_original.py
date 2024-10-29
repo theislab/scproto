@@ -10,14 +10,15 @@ from interpretable_ssl.trainers.scpoli_trainer import ScpoliTrainer
 import torch
 import wandb
 import sys
+from interpretable_ssl.trainers.adaptive_trainer import AdoptiveTrainer
 
 
-class OriginalTrainer(ScpoliTrainer):
-    def __init__(self, parser=None, **kwargs):
-        super().__init__(parser, **kwargs)
-        print('new')
-        if not self.debug:
-            self.init_wandb(self.get_model_path(), 0, 0)
+class OriginalTrainer(AdoptiveTrainer):
+    def __init__(self, debug=False, dataset=None, ref_query = None, parser=None, **kwargs):
+        self.is_swav=0
+        super().__init__(debug, dataset, ref_query, parser, **kwargs)
+        # if not self.debug:
+        #     self.init_wandb()
         # self.experiment_name = "original-scpoli"
         # self.model_name_version = 2
         self.create_dump_path()
@@ -33,12 +34,27 @@ class OriginalTrainer(ScpoliTrainer):
             recon_loss="nb",
         )
 
-    def train(self):
-        epochs = self.fine_tuning_epochs + self.pretraining_epochs
-        model = self.get_model(self.ref.adata)
+        
+    def train(self, pretrain=True, finetune=True, model=None):
+        
+        if model is None:
+            model = self.get_model(self.ref.adata)
+            
+        if pretrain and finetune:
+            epochs = self.fine_tuning_epochs + self.pretraining_epochs
+        
+        if pretrain and not(finetune):
+            epochs = self.pretraining_epochs
+            
+        pretraining_epochs = self.pretraining_epochs
+        if finetune and not(pretrain):
+            epochs = self.fine_tuning_epochs
+            pretraining_epochs = 0
+        
+        
         model.train(
             n_epochs=epochs,
-            pretraining_epochs=self.pretraining_epochs,
+            pretraining_epochs=pretraining_epochs,
             eta=5,
         )
         model_path = self.get_model_path()
@@ -47,6 +63,7 @@ class OriginalTrainer(ScpoliTrainer):
             epochs,
             model_path,
         )
+        self.save_metrics()
 
     def get_model_path(self):
         return self.get_dump_path() + "/model.pth"
@@ -57,8 +74,8 @@ class OriginalTrainer(ScpoliTrainer):
             # saving model at /home/icb/fatemehs.hashemig/models//pbmc-immune/scpoli-original-latent_dim8.pth
             name = f"scpoli-original-latent_dim{self.latent_dims}"
             return self.append_batch(name)
-        elif self.model_name_version < 5:
-            return super().get_model_name()
+        # elif self.model_name_version < 5:
+        #     return super().get_model_name()
         else:
             if self.experiment_name is None:
                 self.experiment_name = 'scpoli'
@@ -70,19 +87,21 @@ class OriginalTrainer(ScpoliTrainer):
         model.model.load_state_dict(torch.load(path)["model_state_dict"])
         return model
 
-    def load_query_model(self):
+    def load_query_model(self, adata=None):
+        if adata is None:
+            adata = self.query.adata
         model = self.load_model()
         scpoli_query = scPoli.load_query_data(
-            adata=self.query.adata,
+            adata=adata,
             reference_model=model,
             labeled_indices=[],
         )
         return scpoli_query
 
-    def finetune_query_model(self, model, epochs=100):
+    def finetune_query_model(self, model):
         model.train(
             n_epochs=self.fine_tuning_epochs,
-            pretraining_epochs=self.get_pretraining_epochs(epochs),
+            pretraining_epochs=self.pretraining_epochs,
             eta=10,
         )
         utils.save_model(
@@ -105,3 +124,24 @@ class OriginalTrainer(ScpoliTrainer):
 
     def get_scpoli_model(self, pretrained_model):
         return pretrained_model.model
+
+    def train_semi_supervised(self):
+        self.split_train_data()
+        self.ref = self.partial_ref
+        self.setup()
+        self.train(pretrain=True, finetune=False)
+        self.finetuning = True
+        self.ref = self.finetune_ds
+        self.train(pretrain=False, finetune=True)
+        
+    def transfer_learning(self):
+        self.dataset = self.get_dataset(self.pretrain_dataset_id)
+        self.ref, self.query = self.dataset.get_train_test()
+        self.train(pretrain=True, finetune=False)
+        
+         # finetune
+        self.finetuning = True
+        self.dataset = self.get_dataset(self.finetune_dataset_id)
+        self.ref, self.query = self.dataset.get_train_test()
+        model = self.load_query_model(self.ref)
+        self.train(pretrain=False, finetune=True, model=model)

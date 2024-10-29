@@ -1,21 +1,18 @@
 from interpretable_ssl.datasets.dataset import SingleCellDataset
-from pathlib import Path
-import pickle as pkl
-from copy import deepcopy
+
 
 def get_label_encoder_path():
     return "./data/hlca_label_encoder.pkl"
-    
+
+
 class HLCADataset(SingleCellDataset):
-    def __init__(self, adata=None, use_pca=False, self_supervised=False):
-        super().__init__('hlca', adata, use_pca, self_supervised, label_encoder_path=get_label_encoder_path())
-    
-        
+    def __init__(self, adata=None, original_idx=None):
+        super().__init__("hlca", adata, get_label_encoder_path(), original_idx)
+        # self.adata.obs.rename(columns={'study': 'batch'}, inplace=True)
+        self.adata.obs["batch"] = self.adata.obs["study"]
+
     def get_data_path(self):
         return "/home/icb/fatemehs.hashemig/data/hlca/hlca_core_hvg.h5ad"
-    
-    def get_query_ds(self):
-        pass
-    
-    def get_train_test(self):
-        return self, []
+
+    def get_test_studies(self):
+        return ["Teichmann_Meyer_2019", "Lafyatis_Rojas_2019"]

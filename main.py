@@ -4,10 +4,10 @@ import argparse
 def get_trainer(model_name, parser):
     if model_name == "swav":
         from interpretable_ssl.trainers.swav import SwAV
-        return SwAV(parser)
+        return SwAV(parser = parser)
     elif model_name == "scpoli":
         from interpretable_ssl.trainers.scpoli_original import OriginalTrainer
-        return OriginalTrainer(parser)
+        return OriginalTrainer(parser = parser)
     else:
         raise ValueError(f"Unknown model name: {model_name}")
 
