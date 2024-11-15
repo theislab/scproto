@@ -27,6 +27,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         longest_path=3,
         dimensionality_reduction=None,
         n_components=50,
+        supervised_ratio=0.1,
         **kwargs,
     ):
         """
@@ -59,9 +60,9 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.dimensionality_reduction = dimensionality_reduction
         self.n_components = n_components
         self.knn_graph = None
-        
-        self.graph_handler = GraphHandler(original_indicies)
 
+        self.graph_handler = GraphHandler(original_indicies)
+        self.supervised_ratio = supervised_ratio
         super().__init__(adata, **kwargs)
 
     def get_random_indices(self, n, specific_index):
@@ -250,7 +251,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 self.knn_graph = self.build_knn_graph()
             else:
                 self.knn_graph = self.graph_handler.load_graph()
-                
+
     def knn_augment(self, index):
         self.set_graph()
         knn_index = self.graph_handler.map_graph_index(index)
@@ -266,6 +267,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         """
         Augment the data by choosing other random cells from the same community.
         """
+        if "leiden_community" not in self.adata.obs:
+            self.build_community_graph()
         # Get the community label for the current cell
         community_label = self.adata.obs.iloc[index]["leiden_community"]
 
@@ -341,12 +344,16 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             return self.knn_augment(index)
 
         elif self.augmentation_type == "community":
-            if "leiden_community" not in self.adata.obs:
-                self.build_community_graph()
+
             return self.community_augment(index)
         elif self.augmentation_type == "nb":
             return self.negative_binomial_augment(index)
-        # elif self.augmentation_type
+        elif self.augmentation_type == "mix":
+            return (
+                self.cell_type_augment(index)
+                if random.random() < self.supervised_ratio
+                else self.community_augment(index)
+            )
         else:
             raise ValueError(f"Invalid augmentation_type: {self.augmentation_type}")
 

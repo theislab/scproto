@@ -19,7 +19,7 @@ class ScpoliTrainer(Trainer):
     def __init__(
         self, debug=False, dataset=None, ref_query=None, parser=None, **kwargs
     ) -> None:
-
+        
         self.default_values = get_defaults().copy()
         self.update_kwargs(parser, kwargs)
         super().__init__(debug, dataset, ref_query, **kwargs)
@@ -77,15 +77,15 @@ class ScpoliTrainer(Trainer):
         return model
 
     def load_query_model(self, adata=None):
-        if adata is None:
-            adata = self.query.adata
+        # if adata is None:
+        #     adata = self.query.adata
         model = self.load_model()
-        scpoli_query = scPoli.load_query_data(
-            adata=adata,
-            reference_model=self.get_scpoli(),
-            labeled_indices=[],
-        )
-        model.set_scpoli_model(scpoli_query.model)
+        # scpoli_query = scPoli.load_query_data(
+        #     adata=adata,
+        #     reference_model=self.get_scpoli(),
+        #     labeled_indices=[],
+        # )
+        # model.set_scpoli_model(scpoli_query.model)
         model.to(self.device)
         return model
 
@@ -99,10 +99,10 @@ class ScpoliTrainer(Trainer):
         dataset = MultiConditionAnnotatedDataset(
             adata,
             condition_keys=[self.condition_key],
-            cell_type_keys=[self.cell_type_key],
+            # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_model.condition_encoders,
             conditions_combined_encoder=scpoli_model.conditions_combined_encoder,
-            cell_type_encoder=scpoli_model.cell_type_encoder,
+            # cell_type_encoder=scpoli_model.cell_type_encoder,
         )
 
         loader = DataLoader(
@@ -155,7 +155,7 @@ class ScpoliTrainer(Trainer):
         )
 
     def get_umap_path(self, data_part="ref"):
-        return self.get_dump_path() + f"/{data_part}-umap.png"
+        pass
 
     def plot_umap(self, model, adata, split, save_plot=True):
         latent = self.encode_adata(adata, model)
@@ -171,9 +171,15 @@ class ScpoliTrainer(Trainer):
             self.get_umap_path(split),
         )
 
-    def plot_ref_umap(self, save_plot=True):
-        model = self.load_model()
-        return self.plot_umap(model, self.ref.adata, "ref", save_plot)
+    def plot_ref_umap(self, save_plot=True, name_postfix=None, model=None):
+        
+        if model is None:
+            model = self.load_model()
+        if name_postfix is not None:
+            name = f"ref-{name_postfix}"
+        else:
+            name = f'ref'
+        return self.plot_umap(model, self.ref.adata, name, save_plot)
 
     def plot_query_umap(self, save_plot=True):
         model = self.load_query_model()

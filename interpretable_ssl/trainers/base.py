@@ -2,8 +2,9 @@ from pathlib import Path
 from interpretable_ssl.configs.defaults import *
 from interpretable_ssl.configs.constants import *
 import os
-
+from constants import *
 from interpretable_ssl.utils import log_time
+
 
 class TrainerBase:
     # @log_time('trainer base')
@@ -91,26 +92,26 @@ class TrainerBase:
         return name
 
     def get_model_name(self):
-        if self.model_name_version > 3.5:
-            return self.generate_name_based_on_changes()
+        # if self.model_name_version > 3.5:
+        #     return self.generate_name_based_on_changes()
+        # else:
+        base = f"num-prot-{self.num_prototypes}"
+        if self.model_name_version < 3:
+            base += f"_hidden-{self.hidden_dim}_bs-{self.batch_size}"
         else:
-            base = f"num-prot-{self.num_prototypes}"
+            base += f"_latent{self.latent_dims}"
+
+        if self.experiment_name is not None:
             if self.model_name_version < 3:
-                base += f"_hidden-{self.hidden_dim}_bs-{self.batch_size}"
+                base = f"{self.experiment_name}-{base}"
             else:
-                base += f"_latent{self.latent_dims}"
+                base = f"{self.experiment_name}_{base}"
+        if self.model_name_version >= 3:
+            base = self.append_batch(base)
 
-            if self.experiment_name is not None:
-                if self.model_name_version < 3:
-                    base = f"{self.experiment_name}-{base}"
-                else:
-                    base = f"{self.experiment_name}_{base}"
-            if self.model_name_version >= 3:
-                base = self.append_batch(base)
-
-            if self.training_type == "semi_supervised":
-                base = f"{base}-semi"
-            return base
+        if self.training_type == "semi_supervised":
+            base = f"{base}-semi"
+        return base
 
     def append_batch(self, base):
         if self.is_swav == 1 and (self.batch_size == self.default_values["batch_size"]):
@@ -153,6 +154,15 @@ class TrainerBase:
     def get_model_path(self):
         return self.get_dump_path() + ".pth"
 
+    def get_abbreviation(self, key):
+
+        if self.model_name_version < 4:
+            return key
+
+        if key in ABBREVIATIONS:
+            return ABBREVIATIONS[key]
+        return key
+
     def add_additional_parameters(self, dump_path):
         """
         Modify the dump_path based on specific attributes and a list of keys
@@ -181,7 +191,13 @@ class TrainerBase:
         if self.default_values["longest_path"] != self.longest_path:
             dump_path = f"{dump_path}_lp{self.longest_path}"
 
-        keys_to_check = ["dimensionality_reduction", "k_neighbors"]
+        keys_to_check = [
+            "dimensionality_reduction",
+            "k_neighbors",
+            "freeze_prototypes_niters",
+            "temperature",
+            "epsilon",
+        ]
         # Check additional keys, if provided
         if keys_to_check:
             for key in keys_to_check:
@@ -189,6 +205,6 @@ class TrainerBase:
                     current_value = getattr(self, key, None)
                     default_value = self.default_values[key]
                     if current_value != default_value:
-                        dump_path = f"{dump_path}_{key}-{current_value}"
+                        dump_path = f"{dump_path}_{self.get_abbreviation(key)}-{current_value}"
 
         return dump_path

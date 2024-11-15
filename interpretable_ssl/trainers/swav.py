@@ -36,6 +36,8 @@ from interpretable_ssl.configs.defaults import *
 import sys
 from interpretable_ssl.utils import log_time
 
+from interpretable_ssl.evaluation.prototype_metrics import *
+
 logger = getLogger()
 
 
@@ -52,63 +54,11 @@ class SwAV(AdoptiveTrainer):
         self.use_projector_out = False
         # would be defferent when trying to finetune, keep original aug type for model path
         self.train_augmentation = self.augmentation_type
+        self.get_dump_path()
+        # print(self.temperature)
         # self.set_experiment_name()
+        self.get_model_path()
 
-    # def get_dump_path(self):
-    #     dump_path = super().get_dump_path()
-
-    #     if self.dump_name_version != 1 and self.dump_name_version < 4:
-    #         dump_path = f"{dump_path}_aug{self.nmb_crops[0]}_latent{self.latent_dims}"
-
-    #     if self.dump_name_version > 2 and self.dump_name_version < 4:
-    #         dump_path = f"{dump_path}_aug-type-{self.augmentation_type}"
-
-    #     if self.dump_name_version > 3:
-    #         dump_path = f"{dump_path}_aug-{self.augmentation_type}{self.nmb_crops[0]}"
-    #         dump_path = self.add_additional_parameters(dump_path)
-
-    #     return dump_path
-
-    # def add_additional_parameters(self, dump_path):
-    #     """
-    #     Modify the dump_path based on specific attributes and a list of keys
-    #     if their current values differ from the default values.
-
-    #     Parameters
-    #     ----------
-    #     dump_path : str
-    #         The base path to modify.
-    #     keys_to_check : list or None
-    #         List of keys to check against their default values. If None, no additional keys are checked.
-
-    #     Returns
-    #     -------
-    #     str
-    #         The modified dump_path with additional parameters included if their values differ from the default.
-    #     """
-    #     # Preserve current functionality
-    #     dump_path = f"{dump_path}_ep{self.epsilon}"
-    #     if self.use_projector:
-    #         dump_path = (
-    #             f"{dump_path}_use-projector_hmlp{self.hidden_mlp}_sdim{self.swav_dim}"
-    #         )
-    #     if self.default_values["model_version"] != self.model_version:
-    #         dump_path = f"{dump_path}_model-v{self.model_version}"
-    #     if self.default_values["longest_path"] != self.longest_path:
-    #         dump_path = f"{dump_path}_lp{self.longest_path}"
-
-    #     keys_to_check = ["dimensionality_reduction", "k_neighbors"]
-    #     # Check additional keys, if provided
-    #     if keys_to_check:
-    #         for key in keys_to_check:
-    #             if key in self.default_values:
-    #                 current_value = getattr(self, key, None)
-    #                 default_value = self.default_values[key]
-    #                 if current_value != default_value:
-    #                     dump_path = f"{dump_path}_{key}-{current_value}"
-
-    #     return dump_path
-    
     def setup(self):
         fix_random_seeds(self.seed)
         self.dump_path = self.get_dump_path()
@@ -126,7 +76,7 @@ class SwAV(AdoptiveTrainer):
         self.scpoli_ = scPoli(
             adata=self.ref.adata,
             condition_keys=self.condition_key,
-            cell_type_keys=self.cell_type_key,
+            # cell_type_keys=self.cell_type_key,
             latent_dim=self.latent_dims,
             recon_loss="nb",
         )
@@ -147,14 +97,14 @@ class SwAV(AdoptiveTrainer):
             longest_path=self.longest_path,
             dimensionality_reduction=self.dimensionality_reduction,
             condition_keys=[self.condition_key],
-            cell_type_keys=[self.cell_type_key],
+            # cell_type_keys=[self.cell_type_key],
             condition_encoders=model.condition_encoders,
             conditions_combined_encoder=model.conditions_combined_encoder,
-            cell_type_encoder=model.cell_type_encoder,
+            # cell_type_encoder=model.cell_type_encoder,
         )
 
         self.train_loader = self.get_data_laoder()
-        logger.info(f"Building data done with {len(self.train_ds)} images loaded.")
+        logger.info(f"Building data done with {len(self.train_ds)} samples loaded.")
 
     def get_data_laoder(self):
         return DataLoader(
@@ -168,17 +118,18 @@ class SwAV(AdoptiveTrainer):
         )
 
     def get_model(self):
-        if self.model_version == 1:
-            return SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
-        else:
-            return SwavModel(
-                self.scpoli_.model,
-                self.latent_dims,
-                self.num_prototypes,
-                self.use_projector,
-                self.hidden_mlp,
-                self.swav_dim,
-            )
+        # if self.model_version == 1:
+        model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
+        return model
+        # else:
+        #     return SwavModel(
+        #         self.scpoli_.model,
+        #         self.latent_dims,
+        #         self.num_prototypes,
+        #         self.use_projector,
+        #         self.hidden_mlp,
+        #         self.swav_dim,
+        #     )
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -196,12 +147,16 @@ class SwAV(AdoptiveTrainer):
         # model = apex.amp.initialize(model, opt_level="O1")
 
         self.scpoli_.model = model.scpoli_model
+        self.model = model
         return model
 
     def build_model(self):
         self.model = self.get_model()
-
         self.model = self.model.cuda()
+        if self.prot_init == "kmeans":
+            logger.info("initalizing prototypes using kmeans")
+            embeddings = self.encode_ref(self.model)
+            self.model.init_prototypes_kmeans(embeddings, self.nmb_prototypes)
         logger.info(self.model)
         logger.info("Building model done.")
 
@@ -293,27 +248,34 @@ class SwAV(AdoptiveTrainer):
                 os.path.join(self.dump_path, f"ckp-{epoch}.pth"),
             )
 
-    def log_wandb_loss(self, scores):
+    def log_wandb_loss(self, scores, epoch):
         _, avg_loss, cvae_loss, swav_loss, prot_loss = scores
-        wandb.log(
-            {
-                "swav": swav_loss,
-                "cvae": cvae_loss,
-                "loss": avg_loss,
-                "prot loss": prot_loss,
-            }
-        )
+        log_dict = {
+            "epoch": epoch,
+            "swav": swav_loss,
+            "cvae": cvae_loss,
+            "loss": avg_loss,
+            "prot loss": prot_loss,
+        }
+        if epoch % 5 == 0:
+            log_dict = log_dict | self.calculate_prototype_metrics()
+        wandb.log(log_dict)
 
     def train(self, epochs=None):
         self.create_dump_path()
         if self.check_scib_metrics_exist():
+            self.model = self.load_model()
             return
         self.init_wandb(self.dump_path)
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
         for epoch in range(self.start_epoch, epochs):
-            logger.info(f"============ Starting epoch {epoch} ... ============")
+            logger.info(f"============ Starting epoch {epoch} ..., ref size: {len(self.ref)}, train ld size: {len(self.train_ds)} ============")
+            if epoch % 5 == 0:
+                # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
+                self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
+            
             if (
                 self.queue_length > 0
                 and epoch >= self.epoch_queue_starts
@@ -326,18 +288,22 @@ class SwAV(AdoptiveTrainer):
                 ).cuda()
 
             scores, self.queue = self.train_one_epoch(epoch)
+            self.scpoli_.model = self.model.scpoli_model
             # self.training_stats.update(scores)
-            self.log_wandb_loss(scores)
+            self.log_wandb_loss(scores, epoch)
             self.save_checkpoint(epoch)
-
-        if self.train_decoder:
-            self.only_decoder_train()
-
+            
+        # if self.train_decoder:
+        #     self.only_decoder_train()
+        
         self.save_metrics()
+        self.plot_ref_umap()
+        self.plot_query_umap()
 
-    def refine_inputs(self, inputs):
-        if self.train_ds.augmentation_type == "batch_knn":
-            inputs = sel
+    def calculate_prototype_metrics(self):
+        emb = self.encode_ref(self.model)
+        p = PrototypeAnalyzer(emb, self.model.prototypes, self.ref.adata)
+        return p.calculate_summary()
 
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
@@ -644,15 +610,17 @@ class SwAV(AdoptiveTrainer):
     def finetune(self):
         # old_aug_type = self.augmentation_type
 
-        scpoli_query = scPoli.load_query_data(
-            adata=self.ref.adata,
-            reference_model=self.get_scpoli(),
-            labeled_indices=[],
-        )
-        self.model.set_scpoli_model(scpoli_query.model)
+        # scpoli_query = scPoli.load_query_data(
+        #     adata=self.ref.adata,
+        #     reference_model=self.get_scpoli(),
+        #     labeled_indices=[],
+        # )
+        # self.model.set_scpoli_model(scpoli_query.model)
 
         self.train_augmentation = "cell_type"
-        self.setup()
+        self.build_data()
+        self.build_optimizer()
+        # self.setup()
         self.train(self.fine_tuning_epochs)
         # self.augmentation_type = old_aug_type
 
