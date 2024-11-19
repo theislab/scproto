@@ -1,7 +1,7 @@
 def get_defaults():
     defaults = {
         "dataset_id": "pbmc-immune",
-        "model_name_version": 4,
+        "model_name_version": 5,
         "num_prototypes": 300,  # swav specific or 8, 128
         "hidden_dim": 64,
         "latent_dims": 8,  # swav specific
@@ -19,7 +19,7 @@ def get_defaults():
         "use_early_stopping": False,
         "pretraining_epochs": 500,
         "fine_tuning_epochs": 500,
-        "training_type": 'pretrain',  # semi_supervised, transfer_learning
+        "training_type": 'semi_supervised',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
         'finetune_dataset_id': 'pbmc-immune',
         

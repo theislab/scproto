@@ -21,7 +21,7 @@ class OriginalTrainer(AdoptiveTrainer):
         #     self.init_wandb()
         # self.experiment_name = "original-scpoli"
         # self.model_name_version = 2
-        self.create_dump_path()
+        # self.create_dump_path()
 
     def get_model(self, adata):
         condition_key = "study"

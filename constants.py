@@ -44,5 +44,6 @@ ABBREVIATIONS = {
     'prot_init': 'prtInit',
     'propagation_reg': 'propReg',
     'prot_emb_sim_reg': 'PEmbSimReg',
-    'loss_type': 'loss'
+    'loss_type': 'loss',
+    'training_type': 'train'
 }

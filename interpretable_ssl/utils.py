@@ -11,24 +11,31 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
+
 def log_time(class_name):
     def decorator(func):
         def wrapper(*args, **kwargs):
             # Log start time
             start_time = time.time()
             logging.info(f"Starting '__init__' of class '{class_name}'")
-            
+
             # Execute the function
             result = func(*args, **kwargs)
-            
+
             # Log end time and duration
             end_time = time.time()
             duration = end_time - start_time
-            logging.info(f"Finished '__init__' of class '{class_name}' in {duration:.4f} seconds")
-            
+            logging.info(
+                f"Finished '__init__' of class '{class_name}' in {duration:.4f} seconds"
+            )
+
             return result
+
         return wrapper
+
     return decorator
+
+
 # @log_time('get device')
 def get_device():
     return "cuda" if torch.cuda.is_available() else "cpu"
@@ -39,7 +46,7 @@ def get_home():
 
 
 def save_model_checkpoint(model, epoch, save_path):
-    print(f'saving model at {save_path}')
+    print(f"saving model at {save_path}")
     torch.save(
         {
             "epoch": epoch,

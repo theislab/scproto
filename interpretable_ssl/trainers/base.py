@@ -4,7 +4,7 @@ from interpretable_ssl.configs.constants import *
 import os
 from constants import *
 from interpretable_ssl.utils import log_time
-
+from interpretable_ssl.model_name import generate_model_name
 
 class TrainerBase:
     # @log_time('trainer base')
@@ -21,8 +21,9 @@ class TrainerBase:
             setattr(self, key, value)
         if self.is_swav == 1:
             self.set_experiment_name()
-            
-        if self.training_type == 'pretrain':
+        self.params = self.__dict__.copy()
+        self.create_dump_path()
+        if self.training_type == "pretrain":
             self.pretraining_epochs += self.fine_tuning_epochs
 
     def get_metric_file_path(self, split):
@@ -58,13 +59,13 @@ class TrainerBase:
             self.experiment_name = None
         if self.experiment_name is not None:
             return
-        
-        if self.dump_name_version >=5:
-            self.experiment_name = f'swav'
+
+        if self.dump_name_version >= 4:
+            self.experiment_name = f"swav"
         else:
             self.set_old_experiment_name()
+
         
-        self.create_dump_path()
 
     def set_old_experiment_name(self):
         if self.dump_name_version < 4:
@@ -79,49 +80,52 @@ class TrainerBase:
             # Optionally handle any other case, or set a default value
             self.experiment_name = "swav"
         self.experiment_name = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
+
     def generate_name_based_on_changes(self):
-        # Get the default values from the function
-        defaults = get_defaults()
+        # # Get the default values from the function
+        # defaults = get_defaults()
 
-        # Create a list to hold parts of the name based on changed fields
-        name_parts = [self.model_type]
+        # # Create a list to hold parts of the name based on changed fields
+        # name_parts = [self.model_type]
 
-        # Iterate over the instance's attributes and compare them with the defaults
-        for key, default_value in defaults.items():
+        # # Iterate over the instance's attributes and compare them with the defaults
+        # for key, default_value in defaults.items():
 
-            current_value = getattr(self, key, None)
+        #     current_value = getattr(self, key, None)
 
-            # Check if the current value is different from the default
-            if current_value != default_value:
-                # Add the key and current value to the name parts
-                name_parts.append(f"{key}-{current_value}")
+        #     # Check if the current value is different from the default
+        #     if current_value != default_value:
+        #         # Add the key and current value to the name parts
+        #         name_parts.append(f"{key}-{current_value}")
 
-        # Join all parts with underscores to form the final name
-        name = "_".join(name_parts)
+        # # Join all parts with underscores to form the final name
+        # name = "_".join(name_parts)
 
-        return name
+        # return name
+        return generate_model_name(get_defaults().copy(), self.params)
+
 
     def get_model_name(self):
-        # if self.model_name_version > 3.5:
-        #     return self.generate_name_based_on_changes()
-        # else:
-        base = f"num-prot-{self.num_prototypes}"
-        if self.model_name_version < 3:
-            base += f"_hidden-{self.hidden_dim}_bs-{self.batch_size}"
+        if self.model_name_version >= 5:
+            return self.generate_name_based_on_changes()
         else:
-            base += f"_latent{self.latent_dims}"
-
-        if self.experiment_name is not None:
+            base = f"num-prot-{self.num_prototypes}"
             if self.model_name_version < 3:
-                base = f"{self.experiment_name}-{base}"
+                base += f"_hidden-{self.hidden_dim}_bs-{self.batch_size}"
             else:
-                base = f"{self.experiment_name}_{base}"
-        if self.model_name_version >= 3:
-            base = self.append_batch(base)
+                base += f"_latent{self.latent_dims}"
 
-        if self.training_type == "semi_supervised":
-            base = f"{base}-semi"
-        return base
+            if self.experiment_name is not None:
+                if self.model_name_version < 3:
+                    base = f"{self.experiment_name}-{base}"
+                else:
+                    base = f"{self.experiment_name}_{base}"
+            if self.model_name_version >= 3:
+                base = self.append_batch(base)
+
+            if self.training_type == "semi_supervised":
+                base = f"{base}-semi"
+            return base
 
     def append_batch(self, base):
         if self.is_swav == 1 and (self.batch_size == self.default_values["batch_size"]):
@@ -156,7 +160,7 @@ class TrainerBase:
         return f"{save_dir}{name}"
 
     def get_dump_path(self):
-        if self.is_swav == 1:
+        if self.is_swav == 1 and self.model_name_version < 5:
             return self.get_swav_dump_path()
         else:
             return self.get_general_dump_path()
@@ -210,8 +214,7 @@ class TrainerBase:
             "prot_init",
             "propagation_reg",
             "prot_emb_sim_reg",
-            "loss_type"
-            
+            "loss_type",
         ]
         # Check additional keys, if provided
         if keys_to_check:
@@ -220,6 +223,8 @@ class TrainerBase:
                     current_value = getattr(self, key, None)
                     default_value = self.default_values[key]
                     if current_value != default_value:
-                        dump_path = f"{dump_path}_{self.get_abbreviation(key)}-{current_value}"
+                        dump_path = (
+                            f"{dump_path}_{self.get_abbreviation(key)}-{current_value}"
+                        )
 
         return dump_path

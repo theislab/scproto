@@ -57,12 +57,12 @@ class SwAV(AdoptiveTrainer):
         self.get_dump_path()
         # print(self.temperature)
         # self.set_experiment_name()
-        self.get_model_path()
+        
 
     def setup(self):
         fix_random_seeds(self.seed)
         self.dump_path = self.get_dump_path()
-        self.create_dump_path()
+        # self.create_dump_path()
         logger, self.training_stats = initialize_exp(self, "epoch", "loss")
         # self.init_scpoli()
         self.build_model()
