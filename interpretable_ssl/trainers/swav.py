@@ -64,22 +64,24 @@ class SwAV(AdoptiveTrainer):
         self.dump_path = self.get_dump_path()
         self.create_dump_path()
         logger, self.training_stats = initialize_exp(self, "epoch", "loss")
-        self.init_scpoli()
-        self.build_data()
+        # self.init_scpoli()
         self.build_model()
+        
+        self.build_data()
+        
         self.build_optimizer()
         self.init_mixed_precision()
         self.load_checkpoint()
 
-    def init_scpoli(self):
+    # def init_scpoli(self):
 
-        self.scpoli_ = scPoli(
-            adata=self.ref.adata,
-            condition_keys=self.condition_key,
-            # cell_type_keys=self.cell_type_key,
-            latent_dim=self.latent_dims,
-            recon_loss="nb",
-        )
+    #     self.scpoli_ = scPoli(
+    #         adata=self.ref.adata,
+    #         condition_keys=self.condition_key,
+    #         # cell_type_keys=self.cell_type_key,
+    #         latent_dim=self.latent_dims,
+    #         recon_loss="nb",
+    #     )
 
     def build_data(self):
 
@@ -87,7 +89,8 @@ class SwAV(AdoptiveTrainer):
         # self.train_adata, self.val_adata = train, val
 
         # why nmb_crops is a list? i used fisrt element but not change it in case needed in furure
-        model = self.scpoli_.model
+        # model = self.scpoli_.model
+        scpoli_encoder = self.model.scpoli_encoder
         self.train_ds = MultiCropsDataset(
             self.ref.adata,
             self.ref.original_idx,
@@ -98,8 +101,8 @@ class SwAV(AdoptiveTrainer):
             dimensionality_reduction=self.dimensionality_reduction,
             condition_keys=[self.condition_key],
             # cell_type_keys=[self.cell_type_key],
-            condition_encoders=model.condition_encoders,
-            conditions_combined_encoder=model.conditions_combined_encoder,
+            condition_encoders=scpoli_encoder.condition_encoders,
+            conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
             # cell_type_encoder=model.cell_type_encoder,
         )
 
@@ -119,17 +122,14 @@ class SwAV(AdoptiveTrainer):
 
     def get_model(self):
         # if self.model_version == 1:
-        model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
-        return model
+        # model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
+        # return model
         # else:
-        #     return SwavModel(
-        #         self.scpoli_.model,
-        #         self.latent_dims,
-        #         self.num_prototypes,
-        #         self.use_projector,
-        #         self.hidden_mlp,
-        #         self.swav_dim,
-        #     )
+        return SwAVModel(
+            self.latent_dims,
+            self.num_prototypes,
+            self.ref.adata
+        )
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -146,7 +146,6 @@ class SwAV(AdoptiveTrainer):
 
         # model = apex.amp.initialize(model, opt_level="O1")
 
-        self.scpoli_.model = model.scpoli_model
         self.model = model
         return model
 
@@ -158,7 +157,7 @@ class SwAV(AdoptiveTrainer):
             embeddings = self.encode_ref(self.model)
             self.model.init_prototypes_kmeans(embeddings, self.nmb_prototypes)
         logger.info(self.model)
-        logger.info("Building model done.")
+        logger.info(f"Building model done. with prot init {self.prot_init}")
 
     def build_optimizer(self):
         self.optimizer = torch.optim.SGD(
@@ -249,13 +248,14 @@ class SwAV(AdoptiveTrainer):
             )
 
     def log_wandb_loss(self, scores, epoch):
-        _, avg_loss, cvae_loss, swav_loss, prot_loss = scores
+        _, avg_loss, cvae_loss, swav_loss, propagation_loss, prot_emb_sim_loss = scores
         log_dict = {
             "epoch": epoch,
             "swav": swav_loss,
             "cvae": cvae_loss,
             "loss": avg_loss,
-            "prot loss": prot_loss,
+            "propagation loss": propagation_loss,
+            "prot_emb_sim_loss": prot_emb_sim_loss
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
@@ -271,7 +271,8 @@ class SwAV(AdoptiveTrainer):
         if epochs is None:
             epochs = self.pretraining_epochs
         for epoch in range(self.start_epoch, epochs):
-            logger.info(f"============ Starting epoch {epoch} ..., ref size: {len(self.ref)}, train ld size: {len(self.train_ds)} ============")
+            logger.info(f"============ Starting epoch {epoch}============")
+            
             if epoch % 5 == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
@@ -288,17 +289,20 @@ class SwAV(AdoptiveTrainer):
                 ).cuda()
 
             scores, self.queue = self.train_one_epoch(epoch)
-            self.scpoli_.model = self.model.scpoli_model
+            # self.scpoli_.model = self.model.scpoli_model
             # self.training_stats.update(scores)
             self.log_wandb_loss(scores, epoch)
             self.save_checkpoint(epoch)
             
         # if self.train_decoder:
         #     self.only_decoder_train()
-        
-        self.save_metrics()
-        self.plot_ref_umap()
+        self.plot_umap(self.model, self.original_ref.adata, 'ref')
         self.plot_query_umap()
+        try:
+            self.save_metrics()
+        except Exception as e:
+            # Log other general exceptions
+            logging.error("Unexpected error occurred: %s", e)
 
     def calculate_prototype_metrics(self):
         emb = self.encode_ref(self.model)
@@ -311,8 +315,11 @@ class SwAV(AdoptiveTrainer):
         losses = AverageMeter()
         cvae_losses = AverageMeter()
         swav_losses = AverageMeter()
-        prot_decoding_losses = AverageMeter()
-
+        # prot_decoding_losses = AverageMeter()
+        propagation_losses = AverageMeter()
+        prot_emb_sim_losses  = AverageMeter()
+        
+        
         self.model.train()
         use_the_queue = False
 
@@ -332,6 +339,8 @@ class SwAV(AdoptiveTrainer):
             _, projector_out, prot_mapped, cvae_loss, prot_decoding_loss = self.model(
                 inputs
             )
+            propagation, prot_emb_sim = prot_decoding_loss
+            
             projector_out = projector_out.detach()
             swav_loss = self.compute_swav_loss(
                 projector_out, prot_mapped, bs, use_the_queue
@@ -339,7 +348,9 @@ class SwAV(AdoptiveTrainer):
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
-                + prot_decoding_loss * self.prot_decoding_loss_scaler
+                # + prot_decoding_loss * self.prot_decoding_loss_scaler
+                + propagation * self.propagation_reg
+                + prot_emb_sim * self.prot_emb_sim_reg
             )
             self.optimizer.zero_grad()
 
@@ -363,8 +374,10 @@ class SwAV(AdoptiveTrainer):
             losses.update(loss.item(), inputs["x"].size(0))
             cvae_losses.update(cvae_loss.item(), inputs["x"].size(0))
             swav_losses.update(swav_loss.item(), inputs["x"].size(0))
-            prot_decoding_losses.update(prot_decoding_loss.item(), inputs["x"].size(0))
-
+            # prot_decoding_losses.update(prot_decoding_loss.item(), inputs["x"].size(0))
+            propagation_losses.update(propagation.item(), inputs["x"].size(0))
+            prot_emb_sim_losses.update(prot_emb_sim.item(), inputs["x"].size(0))
+            
             batch_time.update(time.time() - end)
             end = time.time()
             if iteration % 50 == 0:
@@ -381,7 +394,8 @@ class SwAV(AdoptiveTrainer):
             losses.avg,
             cvae_losses.avg,
             swav_losses.avg,
-            prot_decoding_losses.avg,
+            propagation_losses.avg,
+            prot_emb_sim_losses.avg
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
@@ -409,9 +423,22 @@ class SwAV(AdoptiveTrainer):
                 q = self.distributed_sinkhorn(out)[-bs:]
 
             subloss = 0
+            # for v in np.delete(np.arange(np.sum(self.nmb_crops)), crop_id):
+            #     x = output[bs * v : bs * (v + 1)] / self.temperature
+            #     subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
             for v in np.delete(np.arange(np.sum(self.nmb_crops)), crop_id):
-                x = output[bs * v : bs * (v + 1)] / self.temperature
-                subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
+                x = output[bs * v : bs * (v + 1)] / self.temperature  # logits for the v-th crop
+                if self.loss_type == "kl1":
+                    # KL divergence from q to p (KL(q || p))
+                    p = F.softmax(x, dim=1)  # convert logits to probabilities
+                    subloss += torch.mean(torch.sum(q * (torch.log(q + 1e-9) - torch.log(p + 1e-9)), dim=1))
+                elif self.loss_type == "kl2":
+                    # KL divergence from p to q (KL(p || q))
+                    p = F.softmax(x, dim=1)  # convert logits to probabilities
+                    subloss += torch.mean(torch.sum(p * (torch.log(p + 1e-9) - torch.log(q + 1e-9)), dim=1))
+                else:
+                    # Default cross-entropy functionality (unchanged)
+                    subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
             loss += subloss / (np.sum(self.nmb_crops) - 1)
         loss /= len(self.crops_for_assign)
         return loss
@@ -529,10 +556,10 @@ class SwAV(AdoptiveTrainer):
             return encoder_out
 
     def get_scpoli_model(self, pretrained_model):
-        return pretrained_model.scpoli_model
+        return pretrained_model.scpoli_encoder
 
-    def get_scpoli(self):
-        return self.scpoli_
+    # def get_scpoli(self):
+    #     return self.scpoli_
 
     def plot_projected_umap(self, save=True):
         self.use_projector_out = True
@@ -616,7 +643,7 @@ class SwAV(AdoptiveTrainer):
         #     labeled_indices=[],
         # )
         # self.model.set_scpoli_model(scpoli_query.model)
-
+        self.model = self.adapt_ref_model(self.model, self.ref.adata)
         self.train_augmentation = "cell_type"
         self.build_data()
         self.build_optimizer()

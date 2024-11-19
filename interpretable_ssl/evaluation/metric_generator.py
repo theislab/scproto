@@ -38,16 +38,17 @@ class MetricGenerator:
         return None
 
     def encode_query(self):
-        try:
-            self.trainer.init_scpoli()
-        except:
-            print(self.trainer.name, "cant init scpoli")
+        # try:
+        #     self.trainer.init_scpoli()
+        # except:
+        #     print(self.trainer.name, "cant init scpoli")
         return self.trainer.encode_query()
 
     def get_query_calculator(self):
         return MetricCalculator(
             self.trainer.query.adata,
             [self.encode_query()],
+            self.trainer.get_dump_path(),
             [self.trainer.name],
             self.trainer.get_dump_path(),
         )

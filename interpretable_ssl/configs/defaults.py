@@ -7,7 +7,7 @@ def get_defaults():
         "latent_dims": 8,  # swav specific
         # "batch_size_version": 2,
         "batch_size": 512,
-        "fine_tuning_epochs": 0,
+        
         # "custom_cross_val": False,
         # "description": "",
         "experiment_name": "",  # swav specific
@@ -17,7 +17,8 @@ def get_defaults():
         "linear_eval": False,
         "only_eval": False,
         "use_early_stopping": False,
-        "pretraining_epochs": 300,
+        "pretraining_epochs": 500,
+        "fine_tuning_epochs": 500,
         "training_type": 'pretrain',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
         'finetune_dataset_id': 'pbmc-immune',
@@ -29,7 +30,7 @@ def get_defaults():
         "min_scale_crops": [0.14],  # swav specific
         "max_scale_crops": [1],  # swav specific
         "crops_for_assign": [0, 1],  # swav specific
-        "temperature": 0.1,  # swav specific
+        "temperature": 0.05,  # swav specific
         "epsilon": 0.02,  # swav specific, 0.05
         "sinkhorn_iterations": 3,  # swav specific
         "feat_dim": 8,  # swav specific
@@ -61,10 +62,13 @@ def get_defaults():
         "device": "cuda",  # swav specific
         
         "cvae_loss_scaler": 0.0,  # swav specific, 0.0001
+        
+        ## TODO: replaced by 2 new reg, to be removed
         "prot_decoding_loss_scaler": 0.0,  # swav specific, 5
         "hidden_mlp": 1024,  # swav specific
         "swav_dim": 64,  # swav specific
         "use_projector": False,  # swav specific
+        ## TODO: to be removed, not used except sbatch template
         "model_version": 1,  # swav specific
         "train_decoder": False,  # swav specific
         "longest_path": 3,  # swav specific
@@ -75,6 +79,9 @@ def get_defaults():
         'no_data': 'False',
         "freezable_prototypes": True,  # swav specific (should be true)
         "freeze_prototypes_niters": 0,  # swav specific
-        "prot_init": 'random' #can be kmeans
+        "prot_init": 'kmeans', #can be kmeans
+        "propagation_reg": 0.0,
+        "prot_emb_sim_reg": 0.0,
+        "loss_type": 'cross_entropy'
     }
     return defaults

@@ -29,7 +29,7 @@ class OriginalTrainer(AdoptiveTrainer):
         return scPoli(
             adata=adata,
             condition_keys=condition_key,
-            cell_type_keys=self.cell_type_key,
+            # cell_type_keys=self.cell_type_key,
             latent_dim=self.latent_dims,
             recon_loss="nb",
         )

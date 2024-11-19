@@ -10,14 +10,15 @@ import sys
 
 sys.path.append("/home/icb/fatemehs.hashemig/Islander/src")
 from scGraph import *
-
+import os
 
 class MetricCalculator:
-    def __init__(self, input_adata, latents, keys=["latent"], save_path=None) -> None:
+    def __init__(self, input_adata, latents, dump_path, keys=["latent"], save_path=None) -> None:
 
         self.batch_key = "batch"
         self.label_key = "cell_type"
         self.save_path = save_path
+        self.dump_path = dump_path
         self.keys = keys
         self.adata = self.prepare_adata(input_adata, latents)
         # self.latents = latents
@@ -25,8 +26,7 @@ class MetricCalculator:
     def prepare_adata(self, input_adata, latents):
 
         # Create a deep copy of the input AnnData object
-        adata = deepcopy(input_adata)
-        
+        adata = input_adata
         for key, latent in zip(self.keys, latents):
             # print(key)
             # Convert the latent tensor to a numpy array if it's a PyTorch tensor
@@ -74,8 +74,15 @@ class MetricCalculator:
         results_df = benchmarker.get_results(min_max_scale=False)
         return results_df
 
+    def check_duplicate_category_adata(self, adata):
+        for col in adata.obs.columns:
+            if adata.obs[col].dtype.name == "category":
+                print(col, adata.obs[col].cat.categories.duplicated().sum())
+
     def calculate_scgraph(self):
-        adata_tmp_path = "adata_tmp.h5ad"
+        
+        adata_tmp_path = os.path.join(self.dump_path, "adata_tmp.h5ad")
+        self.check_duplicate_category_adata(self.adata)
         self.adata.write(adata_tmp_path)
 
         scgraph = scGraph(

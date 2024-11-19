@@ -21,6 +21,9 @@ class TrainerBase:
             setattr(self, key, value)
         if self.is_swav == 1:
             self.set_experiment_name()
+            
+        if self.training_type == 'pretrain':
+            self.pretraining_epochs += self.fine_tuning_epochs
 
     def get_metric_file_path(self, split):
         if self.model_name_version == 3:
@@ -55,6 +58,15 @@ class TrainerBase:
             self.experiment_name = None
         if self.experiment_name is not None:
             return
+        
+        if self.dump_name_version >=5:
+            self.experiment_name = f'swav'
+        else:
+            self.set_old_experiment_name()
+        
+        self.create_dump_path()
+
+    def set_old_experiment_name(self):
         if self.dump_name_version < 4:
             return
         if self.prot_decoding_loss_scaler == 0 and self.cvae_loss_scaler == 0:
@@ -67,8 +79,6 @@ class TrainerBase:
             # Optionally handle any other case, or set a default value
             self.experiment_name = "swav"
         self.experiment_name = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
-        self.create_dump_path()
-
     def generate_name_based_on_changes(self):
         # Get the default values from the function
         defaults = get_defaults()
@@ -197,6 +207,11 @@ class TrainerBase:
             "freeze_prototypes_niters",
             "temperature",
             "epsilon",
+            "prot_init",
+            "propagation_reg",
+            "prot_emb_sim_reg",
+            "loss_type"
+            
         ]
         # Check additional keys, if provided
         if keys_to_check:

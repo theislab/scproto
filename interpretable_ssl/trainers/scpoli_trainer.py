@@ -77,18 +77,23 @@ class ScpoliTrainer(Trainer):
         return model
 
     def load_query_model(self, adata=None):
-        # if adata is None:
-        #     adata = self.query.adata
+        if adata is None:
+            adata = self.query.adata
         model = self.load_model()
-        # scpoli_query = scPoli.load_query_data(
-        #     adata=adata,
-        #     reference_model=self.get_scpoli(),
-        #     labeled_indices=[],
-        # )
-        # model.set_scpoli_model(scpoli_query.model)
+        model = self.adapt_ref_model(model, adata)
         model.to(self.device)
         return model
 
+    def adapt_ref_model(self, ref_model, adata):
+        scpoli_query = scPoli.load_query_data(
+            adata=adata,
+            reference_model=ref_model.scpoli_,
+            labeled_indices=[],
+        )
+        ref_model.set_scpoli_encoder(scpoli_query.model)
+        ref_model.to(self.device)
+        return ref_model
+        
     def move_input_on_device(self, inputs):
         for key in inputs:
             inputs[key] = inputs[key].to(self.device)
@@ -119,14 +124,17 @@ class ScpoliTrainer(Trainer):
     def get_scpoli_model(self, pretrained_model):
         pass
 
-    def get_scpoli(self):
-        pass
+    # def get_scpoli(self):
+    #     pass
 
     def encode_ref(self, model=None):
         return self.encode_adata(self.ref.adata, model)
 
-    def encode_query(self):
-        model = self.load_query_model()
+    def encode_query(self, ref_model = None):
+        if ref_model is None:
+            model = self.load_query_model()
+        else:
+            model = self.adapt_ref_model(ref_model, self.query.adata)
         return self.encode_adata(self.query.adata, model)
 
     def encode_adata(self, adata, model=None):
@@ -190,17 +198,19 @@ class ScpoliTrainer(Trainer):
 
     def save_metrics(self):
 
-        ref_latent = self.encode_ref()
+        ref_latent = self.encode_ref(self.model)
         MetricCalculator(
-            self.ref.adata, [ref_latent], save_path=self.get_metric_file_path("ref")
+            self.ref.adata, [ref_latent], self.dump_path,
+            save_path=self.get_metric_file_path("ref")
         ).calculate()
         # calculate_scib_metrics_using_benchmarker(
         #     self.ref.adata, ref_latent, self.get_scib_file_path('ref')
         # )
-        query_latent = self.encode_query()
+        query_latent = self.encode_query(self.model)
         MetricCalculator(
             self.query.adata,
             [query_latent],
+            self.dump_path,
             save_path=self.get_metric_file_path("query"),
         ).calculate()
         # calculate_scib_metrics_using_benchmarker(

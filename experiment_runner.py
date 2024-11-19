@@ -19,7 +19,7 @@ class ExperimentRunner:
         self.conda_env = conda_env
         self.sbatch_dir = sbatch_dir
         # Set default parameters
-        self.defaults = get_defaults()
+        self.defaults = get_defaults().copy()
         self.defaults.update(
             {
                 "job_name": "default_job",
@@ -31,12 +31,12 @@ class ExperimentRunner:
                 "qos": "gpu_normal",
                 "gres": "gpu:1",
                 "conda_env": self.conda_env,
-                "num_prototypes": 300,
+                # "num_prototypes": 300,
                 "latent_dims": 8,
                 "batch_size": 1024,
-                "epsilon": 0.02,
-                "cvae_loss_scaler": 0.0,
-                "prot_decoding_loss_scaler": 0,
+                # "epsilon": 0.02,
+                # "cvae_loss_scaler": 0.0,
+                # "prot_decoding_loss_scaler": 0,
                 "model_version": 1,
             }
         )
@@ -45,10 +45,13 @@ class ExperimentRunner:
         }
         self.original_defaults = self.defaults.copy()
         self.qos_dict = {
-            # "gpu_short": 2,
-            "gpu_long": 3,
+            "gpu_priority": 5,
+            
             "gpu_normal": 10,
-            # "gpu_priority": 5,
+            
+            "gpu_long": 3,
+            
+            "gpu_short": 2,
         }
 
     def get_best_qos(self):
@@ -67,6 +70,7 @@ class ExperimentRunner:
         return None
 
     def update_params(self, **kwargs):
+        self.defaults = self.original_defaults.copy()
         """Update experiment parameters with provided keyword arguments."""
         self.defaults.update(kwargs)
 
@@ -97,12 +101,11 @@ class ExperimentRunner:
         self.defaults["qos"] = best_qos
         self.defaults["memory"] = qos_resource["Memory"]
         self.defaults["cpus_per_task"] = qos_resource["CPU"]
-        self.defaults['workers'] = qos_resource["CPU"] - 1
+        self.defaults["workers"] = qos_resource["CPU"] - 1
         # Read the SBATCH template file
         file_path = os.path.join(self.sbatch_dir, self.template_file)
         with open(file_path, "r") as file:
             sbatch_content = file.read()
-
         # Return the formatted content with the updated defaults
         return sbatch_content.format(**self.defaults)
 
@@ -142,7 +145,7 @@ class ExperimentRunner:
                 continue
             params["job_name"] = job_name
             # params["experiment_name"] = job_name
-
+            
             self.update_params(**params)
 
             if submit:
@@ -294,51 +297,60 @@ if __name__ == "__main__":
     runner = ExperimentRunner("swav_template.sbatch")
 
     #  'scanpy_knn', 'community', 'cell_type'
-    augmentaion_types = ["knn", "scanpy_knn", "community"]
+    
     items_to_test = [
         {
-            "dimensionality_reduction": [None],
-            "prot_decoding_loss_scaler": [0, 5],
-            "cvae_loss_scaler": [0, 0.0001],
-            "k_neighbors": [7],
+            # "temperature": [0.1, 0.07, 0.05],
+            "augmentation_type": ["community"],
             "training_type": ["semi_supervised"],
-            "fine_tuning_epochs": [150],
-            "pretraining_epochs": [150],
-            "augmentation_type": ["knn", 'community'],
-            'num_prototypes': [50],
-            "dataset_id": ["hlca"],
+            "propagation_reg": [0.1, 0.5, 1, 10],
             
         },
         {
-            "prot_decoding_loss_scaler": [0, 5],
-            "cvae_loss_scaler": [0, 0.0001],
+            # "temperature": [0.1, 0.07, 0.05],
+            "augmentation_type": ["community"],
             "training_type": ["semi_supervised"],
-            "fine_tuning_epochs": [150],
-            "pretraining_epochs": [150],
-            "augmentation_type": ["nb"],
-            'num_prototypes': [50],
-            "dataset_id": ["hlca"],
-            
+            'prot_init': ['kmeans', 'random']
         },
+        {
+            "augmentation_type": ["community", 'mix'],
+            "propagation_reg": [0, 1],
+        },
+        {
+            "cvae_loss_scaler": [0.001, 0.01, 0.1],
+            "augmentation_type": ["community"],
+            "training_type": ["semi_supervised"],
+        },
+        {
+            "temperature": [0.05, 0.03, 0.01, 0.005],
+            "augmentation_type": ["community"],
+            "training_type": ["semi_supervised"],
+        },
+        
+        {
+            "augmentation_type": ["community"],
+            "training_type": ["semi_supervised"],
+            "prot_emb_sim_reg": [0.1, 0.5, 1, 10],
+            'prot_init': ['kmeans']
+        },
+
     ]
     evaluate_job_count(items_to_test)
 
-    transfer_lr_test = [
+    test_ = [
         {
-            "prot_decoding_loss_scaler": [0],
-            "cvae_loss_scaler": [0],
-            "training_type": ["transfer_learning"],
-            "fine_tuning_epochs": [5],
-            "pretraining_epochs": [5],
-            "augmentation_type": ["nb"],
-            "experiment_name": ["test_transfer"],
-            "pretrain_dataset_id": ["hlca"],
-            "finetune_dataset_id": ["pbmc-immune"],
-            "batch_size": [1025],
+            # "temperature": [0.1, 0.07, 0.05],
+            "augmentation_type": ["community"],
+            "training_type": ["semi_supervised"],
+            # 'prot_init': ['kmeans']
+            # 'prot_init': ['kmeans', 'random']
+            # "pretraining_epochs": [6],
+            # "fine_tuning_epochs": [6],
+            # "experiment_name": [f'test{i}' for i in range(3)]
         }
     ]
 
-
     for item_to_test in items_to_test:
         # Run all experiments
+        item_to_test['experiment_name'] = ['1000e']
         runner.run_multiple_experiments(item_to_test, True)

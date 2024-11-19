@@ -76,7 +76,12 @@ class AdoptiveTrainer(ScpoliTrainer):
             img_name = f'{img_name}_finetuned'
         
         return self.get_dump_path() + f"/{img_name}.png"
-        
+    
+    def load_adopt(self):
+        model = self.load_model()
+        self.adapt_ref_model(model, self.finetune_ds.adata)
+        return model
+    
     def run(self):
 
         if self.training_type == "semi_supervised":
@@ -87,6 +92,8 @@ class AdoptiveTrainer(ScpoliTrainer):
             self.train()
 
         self.ref = self.original_ref
+        self.plot_ref_umap(name_postfix='with-model_all', model=self.model)
+        self.plot_ref_umap(name_postfix='load-adopt_all', model=self.load_adopt())
         self.plot_ref_umap(name_postfix='all')
         self.plot_query_umap()
         self.additional_plots()

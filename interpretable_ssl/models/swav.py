@@ -11,15 +11,15 @@ from scarches.models.scpoli import scPoli
 
 class SwavBase(nn.Module):
     def __init__(
-        self, scpoli_model, latent_dim, nmb_prototypes
+        self, scpoli_encoder, latent_dim, nmb_prototypes #, propagation_reg=0.5, prot_emb_sim_reg=0.5
     ):
         super().__init__()
-        self.scpoli_model = scpoli_model
+        self.scpoli_encoder = scpoli_encoder
         self.prototypes = nn.Linear(latent_dim, nmb_prototypes, bias=False)
         self.projection_head = None
         self.l2norm = True
-        self.reg1 = 0.5
-        self.reg2 = 0.5
+        # self.propagation_reg = propagation_reg
+        # self.prot_emb_sim_reg = prot_emb_sim_reg
 
     def init_prototypes_kmeans(self, embeddings, nmb_prots):
         # Run KMeans on embeddings (convert to numpy for compatibility)
@@ -31,7 +31,7 @@ class SwavBase(nn.Module):
         self.set_prototypes(cluster_centers)
 
     def forward(self, batch):
-        x, recon_loss, kl_loss, mmd_loss = self.scpoli_model(**batch)
+        x, recon_loss, kl_loss, mmd_loss = self.scpoli_encoder(**batch)
 
         if self.projection_head is not None:
             x = self.projection_head(x)
@@ -48,22 +48,23 @@ class SwavBase(nn.Module):
         # return 2 x so it would be match the other model output
         return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
-    def prototype_distance(self, z: torch.Tensor):
+    def propagation(self, z: torch.Tensor):
         return torch.cdist(z, self.prototypes.weight)
 
-    def feature_vector_distance(self, z: torch.Tensor):
+    def embedding_similarity(self, z: torch.Tensor):
         return torch.cdist(self.prototypes.weight, z)
 
     def prototype_decoding_loss(self, z):
-        p_dist = self.prototype_distance(z)
-        f_dist = self.feature_vector_distance(z)
-        return (
-            self.reg1 * p_dist.min(1).values.mean()
-            + self.reg2 * f_dist.min(1).values.mean()
-        )
+        p_dist = self.propagation(z)
+        f_dist = self.embedding_similarity(z)
+        # return (
+        #     self.propagation_reg * p_dist.min(1).values.mean()
+        #     + self.prot_emb_sim_reg * f_dist.min(1).values.mean()
+        # )
+        return p_dist.min(1).values.mean(), f_dist.min(1).values.mean()
 
-    def set_scpoli_model(self, scpoli_model):
-        self.scpoli_model = scpoli_model
+    def set_scpoli_encoder(self, scpoli_encoder):
+        self.scpoli_encoder = scpoli_encoder
 
     def encode(self, batch):
         encoder_out, x, x_mapped, _, _ = self.forward(batch)
@@ -82,17 +83,17 @@ class SwavBase(nn.Module):
             self.prototypes.weight.copy_(w)
 
 class SwAVModel(SwavBase):
-    def __init__(self, latent_dim, nmb_prototypes, adata):
-        self.cell_type_key = "cell_type"
+    def __init__(self, latent_dim, nmb_prototypes, adata): # , propagation_reg=0.5, prot_emb_sim_reg=0.5
+        # self.cell_type_key = "cell_type"
         self.condition_key = "study"
         self.scpoli_ = self.init_scpoli(adata, latent_dim)
-        super().__init__(self.scpoli_.model, latent_dim, nmb_prototypes)
+        super().__init__(self.scpoli_.model, latent_dim, nmb_prototypes) # , propagation_reg, prot_emb_sim_reg
         
     def init_scpoli(self, adata, latent_dim):
         return scPoli(
             adata=adata,
             condition_keys=self.condition_key,
-            cell_type_keys=self.cell_type_key,
+            # cell_type_keys=self.cell_type_key,
             latent_dim=latent_dim,
             recon_loss="nb",
         )
