@@ -87,7 +87,7 @@ class ScpoliTrainer(Trainer):
     def adapt_ref_model(self, ref_model, adata):
         scpoli_query = scPoli.load_query_data(
             adata=adata,
-            reference_model=ref_model.scpoli_,
+            reference_model=self.get_scpoli(ref_model, False),
             labeled_indices=[],
         )
         ref_model.set_scpoli_encoder(scpoli_query.model)
@@ -121,11 +121,8 @@ class ScpoliTrainer(Trainer):
     def encode_batch(self, model, batch):
         pass
 
-    def get_scpoli_model(self, pretrained_model):
+    def get_scpoli(self, pretrained_model, return_model=True):
         pass
-
-    # def get_scpoli(self):
-    #     pass
 
     def encode_ref(self, model=None):
         return self.encode_adata(self.ref.adata, model)
@@ -141,7 +138,7 @@ class ScpoliTrainer(Trainer):
         if model is None:
             model = self.load_model()
         loader = self.prepare_scpoli_dataloader(
-            adata, self.get_scpoli_model(model), shuffle=False
+            adata, self.get_scpoli(model), shuffle=False
         )
         embeddings = [self.encode_batch(model, batch) for batch in tqdm(loader)]
         return torch.cat(embeddings)

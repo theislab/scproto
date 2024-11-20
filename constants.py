@@ -1,6 +1,6 @@
 ABBREVIATIONS = {
     # SLURM-related parameters
-    "job_name": "job",
+    # "job_name": "job",
     "nodes": "N",
     "cpus_per_task": "CPUs",
     "memory": "mem",
@@ -45,5 +45,7 @@ ABBREVIATIONS = {
     'propagation_reg': 'propReg',
     'prot_emb_sim_reg': 'PEmbSimReg',
     'loss_type': 'loss',
-    'training_type': 'train'
+    'training_type': 'train',
+    'pretraining_epochs': 'pre-e',
+    'fine_tuning_epochs': 'tune-e'
 }

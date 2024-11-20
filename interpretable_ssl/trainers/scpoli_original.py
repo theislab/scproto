@@ -14,8 +14,10 @@ from interpretable_ssl.trainers.adaptive_trainer import AdoptiveTrainer
 
 
 class OriginalTrainer(AdoptiveTrainer):
-    def __init__(self, debug=False, dataset=None, ref_query = None, parser=None, **kwargs):
-        self.is_swav=0
+    def __init__(
+        self, debug=False, dataset=None, ref_query=None, parser=None, **kwargs
+    ):
+        self.is_swav = 0
         super().__init__(debug, dataset, ref_query, parser, **kwargs)
         # if not self.debug:
         #     self.init_wandb()
@@ -24,34 +26,36 @@ class OriginalTrainer(AdoptiveTrainer):
         # self.create_dump_path()
 
     def get_model(self, adata):
+        if self.training_type == 'pretrain':
+            cell_type_key = None
+        else:
+            cell_type_key = "cell_type"
         condition_key = "study"
-        cell_type_key = "cell_type"
+        
         return scPoli(
             adata=adata,
             condition_keys=condition_key,
-            # cell_type_keys=self.cell_type_key,
+            cell_type_keys=cell_type_key,
             latent_dim=self.latent_dims,
             recon_loss="nb",
         )
 
-        
     def train(self, pretrain=True, finetune=True, model=None):
-        
+
         if model is None:
             model = self.get_model(self.ref.adata)
-            
+
         if pretrain and finetune:
             epochs = self.fine_tuning_epochs + self.pretraining_epochs
-        
-        if pretrain and not(finetune):
+
+        if pretrain and not (finetune):
             epochs = self.pretraining_epochs
-            
+
         pretraining_epochs = self.pretraining_epochs
-        if finetune and not(pretrain):
+        if finetune and not (pretrain):
             epochs = self.fine_tuning_epochs
             pretraining_epochs = 0
-        
-        
+
         model.train(
             n_epochs=epochs,
             pretraining_epochs=pretraining_epochs,
@@ -78,8 +82,13 @@ class OriginalTrainer(AdoptiveTrainer):
         #     return super().get_model_name()
         else:
             if self.experiment_name is None:
-                self.experiment_name = 'scpoli'
-            return f'{self.experiment_name}_latent{self.latent_dims}_bs{self.batch_size}'
+                self.experiment_name = "scpoli"
+            if self.model_name_version < 5:
+                return (
+                    f"{self.experiment_name}_latent{self.latent_dims}_bs{self.batch_size}"
+                )
+            else:
+                return f'{self.experiment_name}_training-{self.training_type}'
 
     def load_model(self):
         model = self.get_model(self.ref.adata)
@@ -115,15 +124,17 @@ class OriginalTrainer(AdoptiveTrainer):
 
     def encode_batch(self, model, batch):
         batch = self.move_input_on_device(batch)
-        scpoli_model = self.get_scpoli_model(model)
+        scpoli_model = self.get_scpoli(model)
         scpoli_model.to(self.device)
         scpoli_model.eval()
         with torch.no_grad():
             x, _, _, _ = scpoli_model(**batch)
         return x
 
-    def get_scpoli_model(self, pretrained_model):
-        return pretrained_model.model
+    def get_scpoli(self, pretrained_model, return_model=True):
+        if return_model:
+            return pretrained_model.model
+        return pretrained_model
 
     def train_semi_supervised(self):
         self.split_train_data()
@@ -133,15 +144,19 @@ class OriginalTrainer(AdoptiveTrainer):
         self.finetuning = True
         self.ref = self.finetune_ds
         self.train(pretrain=False, finetune=True)
-        
+
     def transfer_learning(self):
         self.dataset = self.get_dataset(self.pretrain_dataset_id)
         self.ref, self.query = self.dataset.get_train_test()
         self.train(pretrain=True, finetune=False)
-        
-         # finetune
+
+        # finetune
         self.finetuning = True
         self.dataset = self.get_dataset(self.finetune_dataset_id)
         self.ref, self.query = self.dataset.get_train_test()
         model = self.load_query_model(self.ref)
         self.train(pretrain=False, finetune=True, model=model)
+
+    def train_fully_supervised(self):
+        self.finetuning = True
+        self.train(pretrain=True, finetune=True)

@@ -22,7 +22,7 @@ class ExperimentRunner:
         self.defaults = get_defaults().copy()
         self.defaults.update(
             {
-                "job_name": "default_job",
+                # "job_name": "default_job",
                 "nodes": 1,
                 "cpus_per_task": 10,
                 "memory": "80G",
@@ -45,13 +45,13 @@ class ExperimentRunner:
         }
         self.original_defaults = self.defaults.copy()
         self.qos_dict = {
-            "gpu_priority": 5,
             
             "gpu_normal": 10,
             
             "gpu_long": 3,
             
             "gpu_short": 2,
+            # "gpu_priority": 5,
         }
 
     def get_best_qos(self):
@@ -300,17 +300,21 @@ if __name__ == "__main__":
     #  'scanpy_knn', 'community', 'cell_type'
     
     items_to_test = [
+        
+        {"training_type": ["semi_supervised", "partial_supervised"],
+                        "pretraining_epochs": [250],
+                        "fine_tuning_epochs": [250],
+                        },
         {
             # "temperature": [0.1, 0.07, 0.05],
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            
+            
             "propagation_reg": [0.1, 0.5, 1, 10],
             
         },
         {
             # "temperature": [0.1, 0.07, 0.05],
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            
             'prot_init': ['kmeans', 'random']
         },
         {
@@ -319,30 +323,31 @@ if __name__ == "__main__":
         },
         {
             "cvae_loss_scaler": [0.001, 0.01, 0.1],
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            
         },
         {
             "temperature": [0.05, 0.03, 0.01, 0.005],
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            
         },
         
         {
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            
             "prot_emb_sim_reg": [0.1, 0.5, 1, 10],
-            'prot_init': ['kmeans']
+            
         },
+        {
+            "dimensionality_reduction": ['pca', None]
+        }
 
     ]
     evaluate_job_count(items_to_test)
 
     test_ = [
         {
+            "experiment_name": ['test2']
             # "temperature": [0.1, 0.07, 0.05],
-            "augmentation_type": ["community"],
-            "training_type": ["semi_supervised"],
+            # "augmentation_type": ["community"],
+            # "training_type": ["semi_supervised"],
             # 'prot_init': ['kmeans']
             # 'prot_init': ['kmeans', 'random']
             # "pretraining_epochs": [6],
@@ -351,7 +356,9 @@ if __name__ == "__main__":
         }
     ]
 
+    pretrain_effect = []
     for item_to_test in items_to_test:
         # Run all experiments
-        item_to_test['experiment_name'] = ['1000e']
+        if 'pretraining_epochs' not in item_to_test:
+            item_to_test['experiment_name'] = ['1000e']
         runner.run_multiple_experiments(item_to_test, True)

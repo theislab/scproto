@@ -10,7 +10,7 @@ def get_defaults():
         
         # "custom_cross_val": False,
         # "description": "",
-        "experiment_name": "",  # swav specific
+        "experiment_name": "swav",  # swav specific
         "condition_key": "study",
         "cell_type_key": "cell_type",
         # "epochs": 300,
@@ -25,7 +25,7 @@ def get_defaults():
         
         "dump_name_version": 4,  # swav specific
         "nmb_crops": [8],  # swav specific
-        "augmentation_type": "knn",  # swav specific
+        "augmentation_type": "community",  # swav specific
         "size_crops": [224],  # swav specific
         "min_scale_crops": [0.14],  # swav specific
         "max_scale_crops": [1],  # swav specific

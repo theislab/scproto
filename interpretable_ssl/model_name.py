@@ -6,11 +6,11 @@ def generate_model_name(defaults, params):
     job_name_parts = []
 
     # Always include the augmentation type
-    aug_type = params.get("augmentation_type")
-    if aug_type:
-        job_name_parts.append(
-            f"{ABBREVIATIONS['augmentation_type']}_{str(aug_type)[:4]}"
-        )
+    aug_type = params.get("augmentation_type", "community")
+    # if aug_type:
+    job_name_parts.append(
+        f"{ABBREVIATIONS['augmentation_type']}_{str(aug_type)[:4]}"
+    )
 
     # Include other parameters that differ from their defaults
     for key, val in params.items():

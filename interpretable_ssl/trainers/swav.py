@@ -555,8 +555,13 @@ class SwAV(AdoptiveTrainer):
         else:
             return encoder_out
 
-    def get_scpoli_model(self, pretrained_model):
-        return pretrained_model.scpoli_encoder
+    def get_scpoli(self, pretrained_model, return_model=True):
+        if return_model:
+            return pretrained_model.scpoli_encoder
+        return pretrained_model.scpoli_
+    # def get_scpoli(self, pretrained_model):
+        
+    #     return pretrained_model.scpoli_encoder
 
     # def get_scpoli(self):
     #     return self.scpoli_
