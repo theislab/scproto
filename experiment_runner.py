@@ -6,6 +6,7 @@ from interpretable_ssl.configs.defaults import *
 import time
 from interpretable_ssl.model_name import generate_model_name
 
+
 class ExperimentRunner:
     def __init__(
         self,
@@ -33,23 +34,21 @@ class ExperimentRunner:
                 "conda_env": self.conda_env,
                 # "num_prototypes": 300,
                 "latent_dims": 8,
-                "batch_size": 1024,
+                # "batch_size": 512,
                 # "epsilon": 0.02,
                 # "cvae_loss_scaler": 0.0,
                 # "prot_decoding_loss_scaler": 0,
                 "model_version": 1,
             }
         )
+        self.defaults["experiment_name"] = "swav"
         self.defaults = {
             key: None if value == "" else value for key, value in self.defaults.items()
         }
         self.original_defaults = self.defaults.copy()
         self.qos_dict = {
-            
             "gpu_normal": 10,
-            
             "gpu_long": 3,
-            
             "gpu_short": 2,
             # "gpu_priority": 5,
         }
@@ -145,7 +144,7 @@ class ExperimentRunner:
                 continue
             params["job_name"] = job_name
             # params["experiment_name"] = job_name
-            
+
             self.update_params(**params)
 
             if submit:
@@ -298,53 +297,72 @@ if __name__ == "__main__":
     runner = ExperimentRunner("swav_template.sbatch")
 
     #  'scanpy_knn', 'community', 'cell_type'
-    
+
     items_to_test = [
-        
-        {"training_type": ["semi_supervised", "partial_supervised"],
-                        "pretraining_epochs": [250],
-                        "fine_tuning_epochs": [250],
-                        },
         {
             # "temperature": [0.1, 0.07, 0.05],
-            
-            
+            # 'prot_init': ['kmeans', 'random']
+            "num_prototypes": [16, 100, 200, 300]
+        },
+        # {"training_type": ["semi_supervised", "partial_supervised"],
+        #                 "pretraining_epochs": [250],
+        #                 "fine_tuning_epochs": [250],
+        #                 },
+        {
+            # "temperature": [0.1, 0.07, 0.05],
             "propagation_reg": [0.1, 0.5, 1, 10],
-            
         },
         {
-            # "temperature": [0.1, 0.07, 0.05],
-            
-            'prot_init': ['kmeans', 'random']
-        },
-        {
-            "augmentation_type": ["community", 'mix'],
+            "augmentation_type": ["community", "mix"],
             "propagation_reg": [0, 1],
         },
         {
             "cvae_loss_scaler": [0.001, 0.01, 0.1],
-            
         },
         {
             "temperature": [0.05, 0.03, 0.01, 0.005],
-            
         },
-        
         {
-            
             "prot_emb_sim_reg": [0.1, 0.5, 1, 10],
-            
+        },
+        {"dimensionality_reduction": ["pca", None]},
+    ]
+
+    items_to_test = [
+        {
+            "training_type": ["pretrain_encoder"],
+            "prot_init": ["kmeans"],
+            "latent_dims": [16, 32, 64, 128],
+            #   'fine_tuning_epochs': [100, 500],
         },
         {
-            "dimensionality_reduction": ['pca', None]
-        }
-
+            "training_type": ["pretrain_encoder"],
+            "pretraining_epochs": [10],
+            "fine_tuning_epochs": [10],
+            "cvae_loss_scaler": [0.05],
+            "prot_decoding_loss_scaler": [1],
+            "experiment_name": ["test"],
+            "prot_init": ["kmeans"],
+        },
+        {
+            "training_type": ["pretrain_encoder"],
+            "prot_init": ["kmeans"],
+            "cvae_loss_scaler": [0.01, 0.05, 0.1, 0.2],
+            "fine_tuning_epochs": [0, 100],
+        },
+        {
+            "training_type": ["pretrain_encoder"],
+            "prot_init": ["kmeans"],
+            "cvae_loss_scaler": [0.05],
+            "prot_decoding_loss_scaler": [0.5, 1, 2],
+            #   'fine_tuning_epochs': [100, 500],
+        },
     ]
     evaluate_job_count(items_to_test)
 
     test_ = [
         {
-            "experiment_name": ['test2']
+            "experiment_name": ["test2"]
             # "temperature": [0.1, 0.07, 0.05],
             # "augmentation_type": ["community"],
             # "training_type": ["semi_supervised"],
@@ -359,6 +377,9 @@ if __name__ == "__main__":
     pretrain_effect = []
     for item_to_test in items_to_test:
         # Run all experiments
-        if 'pretraining_epochs' not in item_to_test:
-            item_to_test['experiment_name'] = ['1000e']
+        # if 'pretraining_epochs' not in item_to_test:
+        #     item_to_test['experiment_name'] = ['1000e']
+        # if 'num_prototypes' not in item_to_test:
+        #     item_to_test['num_prototypes'] = [16]
+        # item_to_test['prot_init'] = ['random']
         runner.run_multiple_experiments(item_to_test, True)
