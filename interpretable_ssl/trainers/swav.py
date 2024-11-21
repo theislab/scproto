@@ -307,6 +307,11 @@ class SwAV(AdoptiveTrainer):
         p = PrototypeAnalyzer(emb, self.model.prototypes, self.ref.adata)
         return p.calculate_summary()
 
+    def calculate_other_metrics(self):
+        ref_emb = self.encode_adata(self.original_ref.adata, self.model)
+        query_emb = self.encode_query(self.model)
+        return {'propagation loss': self.model.propagation(ref_emb).cpu().item()}, {'propagation loss': self.model.propagation(query_emb).cpu().item()}
+    
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()

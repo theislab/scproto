@@ -193,13 +193,16 @@ class ScpoliTrainer(Trainer):
     def additional_plots(self):
         pass
 
+    def calculate_other_metrics(self):
+        return {}, {}
+    
     def save_metrics(self):
-
+        ref_other, query_other = self.calculate_other_metrics()
         ref_latent = self.encode_ref(self.model)
         MetricCalculator(
             self.ref.adata, [ref_latent], self.dump_path,
             save_path=self.get_metric_file_path("ref")
-        ).calculate()
+        ).calculate(ref_other)
         # calculate_scib_metrics_using_benchmarker(
         #     self.ref.adata, ref_latent, self.get_scib_file_path('ref')
         # )
@@ -209,7 +212,7 @@ class ScpoliTrainer(Trainer):
             [query_latent],
             self.dump_path,
             save_path=self.get_metric_file_path("query"),
-        ).calculate()
+        ).calculate(query_other)
         # calculate_scib_metrics_using_benchmarker(
         #     self.query.adata, query_latent, self.get_scib_file_path('query')
         # )

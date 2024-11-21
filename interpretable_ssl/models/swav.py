@@ -49,19 +49,13 @@ class SwavBase(nn.Module):
         return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
     def propagation(self, z: torch.Tensor):
-        return torch.cdist(z, self.prototypes.weight)
-
+        dist = torch.cdist(z, self.prototypes.weight)
+        return dist.min(1).values.mean()
     def embedding_similarity(self, z: torch.Tensor):
-        return torch.cdist(self.prototypes.weight, z)
-
+        dist = torch.cdist(self.prototypes.weight, z)
+        return dist.min(1).values.mean()
     def prototype_decoding_loss(self, z):
-        p_dist = self.propagation(z)
-        f_dist = self.embedding_similarity(z)
-        # return (
-        #     self.propagation_reg * p_dist.min(1).values.mean()
-        #     + self.prot_emb_sim_reg * f_dist.min(1).values.mean()
-        # )
-        return p_dist.min(1).values.mean(), f_dist.min(1).values.mean()
+        return self.propagation(z), self.embedding_similarity(z)
 
     def set_scpoli_encoder(self, scpoli_encoder):
         self.scpoli_encoder = scpoli_encoder
