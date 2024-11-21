@@ -1,7 +1,7 @@
 def get_defaults():
     defaults = {
         "dataset_id": "pbmc-immune",
-        "model_name_version": 5,
+        "model_name_version": 6,
         "num_prototypes": 300,  # swav specific or 8, 128
         "hidden_dim": 64,
         "latent_dims": 8,  # swav specific
@@ -10,7 +10,7 @@ def get_defaults():
         
         # "custom_cross_val": False,
         # "description": "",
-        "experiment_name": "swav",  # swav specific
+        "experiment_name": "",  # swav specific / or swav
         "condition_key": "study",
         "cell_type_key": "cell_type",
         # "epochs": 300,
@@ -79,7 +79,7 @@ def get_defaults():
         'no_data': 'False',
         "freezable_prototypes": True,  # swav specific (should be true)
         "freeze_prototypes_niters": 0,  # swav specific
-        "prot_init": 'kmeans', #can be kmeans
+        "prot_init": 'random', #can be kmeans
         "propagation_reg": 0.0,
         "prot_emb_sim_reg": 0.0,
         "loss_type": 'cross_entropy'

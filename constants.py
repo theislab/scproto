@@ -46,6 +46,8 @@ ABBREVIATIONS = {
     'prot_emb_sim_reg': 'PEmbSimReg',
     'loss_type': 'loss',
     'training_type': 'train',
-    'pretraining_epochs': 'pre-e',
-    'fine_tuning_epochs': 'tune-e'
+    # 'pretraining_epochs': 'pre-e',
+    # 'fine_tuning_epochs': 'tune-e'
+    'pretraining_epochs': 'pretrain',
+    'fine_tuning_epochs': 'finetune'
 }

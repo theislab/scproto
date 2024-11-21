@@ -57,7 +57,6 @@ class SwAV(AdoptiveTrainer):
         self.get_dump_path()
         # print(self.temperature)
         # self.set_experiment_name()
-        
 
     def setup(self):
         fix_random_seeds(self.seed)
@@ -66,9 +65,9 @@ class SwAV(AdoptiveTrainer):
         logger, self.training_stats = initialize_exp(self, "epoch", "loss")
         # self.init_scpoli()
         self.build_model()
-        
+
         self.build_data()
-        
+
         self.build_optimizer()
         self.init_mixed_precision()
         self.load_checkpoint()
@@ -125,11 +124,7 @@ class SwAV(AdoptiveTrainer):
         # model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
         # return model
         # else:
-        return SwAVModel(
-            self.latent_dims,
-            self.num_prototypes,
-            self.ref.adata
-        )
+        return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -149,13 +144,16 @@ class SwAV(AdoptiveTrainer):
         self.model = model
         return model
 
-    def build_model(self):
-        self.model = self.get_model()
-        self.model = self.model.cuda()
+    def init_prototypes(self):
         if self.prot_init == "kmeans":
             logger.info("initalizing prototypes using kmeans")
             embeddings = self.encode_ref(self.model)
             self.model.init_prototypes_kmeans(embeddings, self.nmb_prototypes)
+
+    def build_model(self):
+        self.model = self.get_model()
+        self.model = self.model.cuda()
+        self.init_prototypes()
         logger.info(self.model)
         logger.info(f"Building model done. with prot init {self.prot_init}")
 
@@ -255,7 +253,7 @@ class SwAV(AdoptiveTrainer):
             "cvae": cvae_loss,
             "loss": avg_loss,
             "propagation loss": propagation_loss,
-            "prot_emb_sim_loss": prot_emb_sim_loss
+            "prot_emb_sim_loss": prot_emb_sim_loss,
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
@@ -272,11 +270,11 @@ class SwAV(AdoptiveTrainer):
             epochs = self.pretraining_epochs
         for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch}============")
-            
+
             if epoch % 5 == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
-            
+
             if (
                 self.queue_length > 0
                 and epoch >= self.epoch_queue_starts
@@ -293,10 +291,10 @@ class SwAV(AdoptiveTrainer):
             # self.training_stats.update(scores)
             self.log_wandb_loss(scores, epoch)
             self.save_checkpoint(epoch)
-            
+
         # if self.train_decoder:
         #     self.only_decoder_train()
-        self.plot_umap(self.model, self.original_ref.adata, 'ref')
+        self.plot_umap(self.model, self.original_ref.adata, "ref")
         self.plot_query_umap()
         try:
             self.save_metrics()
@@ -317,9 +315,8 @@ class SwAV(AdoptiveTrainer):
         swav_losses = AverageMeter()
         # prot_decoding_losses = AverageMeter()
         propagation_losses = AverageMeter()
-        prot_emb_sim_losses  = AverageMeter()
-        
-        
+        prot_emb_sim_losses = AverageMeter()
+
         self.model.train()
         use_the_queue = False
 
@@ -340,7 +337,7 @@ class SwAV(AdoptiveTrainer):
                 inputs
             )
             propagation, prot_emb_sim = prot_decoding_loss
-            
+
             projector_out = projector_out.detach()
             swav_loss = self.compute_swav_loss(
                 projector_out, prot_mapped, bs, use_the_queue
@@ -377,7 +374,7 @@ class SwAV(AdoptiveTrainer):
             # prot_decoding_losses.update(prot_decoding_loss.item(), inputs["x"].size(0))
             propagation_losses.update(propagation.item(), inputs["x"].size(0))
             prot_emb_sim_losses.update(prot_emb_sim.item(), inputs["x"].size(0))
-            
+
             batch_time.update(time.time() - end)
             end = time.time()
             if iteration % 50 == 0:
@@ -395,7 +392,7 @@ class SwAV(AdoptiveTrainer):
             cvae_losses.avg,
             swav_losses.avg,
             propagation_losses.avg,
-            prot_emb_sim_losses.avg
+            prot_emb_sim_losses.avg,
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
@@ -427,15 +424,25 @@ class SwAV(AdoptiveTrainer):
             #     x = output[bs * v : bs * (v + 1)] / self.temperature
             #     subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
             for v in np.delete(np.arange(np.sum(self.nmb_crops)), crop_id):
-                x = output[bs * v : bs * (v + 1)] / self.temperature  # logits for the v-th crop
+                x = (
+                    output[bs * v : bs * (v + 1)] / self.temperature
+                )  # logits for the v-th crop
                 if self.loss_type == "kl1":
                     # KL divergence from q to p (KL(q || p))
                     p = F.softmax(x, dim=1)  # convert logits to probabilities
-                    subloss += torch.mean(torch.sum(q * (torch.log(q + 1e-9) - torch.log(p + 1e-9)), dim=1))
+                    subloss += torch.mean(
+                        torch.sum(
+                            q * (torch.log(q + 1e-9) - torch.log(p + 1e-9)), dim=1
+                        )
+                    )
                 elif self.loss_type == "kl2":
                     # KL divergence from p to q (KL(p || q))
                     p = F.softmax(x, dim=1)  # convert logits to probabilities
-                    subloss += torch.mean(torch.sum(p * (torch.log(p + 1e-9) - torch.log(q + 1e-9)), dim=1))
+                    subloss += torch.mean(
+                        torch.sum(
+                            p * (torch.log(p + 1e-9) - torch.log(q + 1e-9)), dim=1
+                        )
+                    )
                 else:
                     # Default cross-entropy functionality (unchanged)
                     subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
@@ -559,8 +566,9 @@ class SwAV(AdoptiveTrainer):
         if return_model:
             return pretrained_model.scpoli_encoder
         return pretrained_model.scpoli_
+
     # def get_scpoli(self, pretrained_model):
-        
+
     #     return pretrained_model.scpoli_encoder
 
     # def get_scpoli(self):
