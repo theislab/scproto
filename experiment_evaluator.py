@@ -116,7 +116,10 @@ class ExperimentEvaluator(ExperimentRunner):
 
     def generate_job_name(self, params, model_type):
         job_name = super().generate_job_name(params)
-        return model_type + "_" + job_name
+        if model_type == 'scpoli':
+            return model_type + "_" + job_name
+        else:
+            return job_name
 
     def generate_trainers(self, item_list):
         """Generate a list of trainer instances based on the parameter grid."""
@@ -167,9 +170,11 @@ class ExperimentEvaluator(ExperimentRunner):
             if trainer.name[-4:] == "scpo":
                 trainer.name = trainer.name[-4:] + trainer.experiment_name
 
+        
         if semi_supervised:
             for trainer in trainers:
-                trainer.finetuning = True
+                if trainer.fine_tuning_epochs!=0:
+                    trainer.finetuning = True
 
         def filter_trainers(inp_trainers):
             def model_exist(trainer):
@@ -182,6 +187,9 @@ class ExperimentEvaluator(ExperimentRunner):
         valid_trainers = filter_trainers(trainers)
         self.trainers = valid_trainers
         print(f"all trainers: {len(trainers)}, valid trainers: {len(valid_trainers)}")
+        # invalid_trainers = set(trainers) - set(valid_trainers)
+        # for trainer in invalid_trainers:
+        #     print
         dfs = [MetricGenerator(t).generate_metrics() for t in valid_trainers]
 
         res = pd.concat(dfs, axis=0)[
