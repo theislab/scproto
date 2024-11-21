@@ -72,16 +72,6 @@ class SwAV(AdoptiveTrainer):
         self.init_mixed_precision()
         self.load_checkpoint()
 
-    # def init_scpoli(self):
-
-    #     self.scpoli_ = scPoli(
-    #         adata=self.ref.adata,
-    #         condition_keys=self.condition_key,
-    #         # cell_type_keys=self.cell_type_key,
-    #         latent_dim=self.latent_dims,
-    #         recon_loss="nb",
-    #     )
-
     def build_data(self):
 
         # train, val = self.split_train_test(self.ref)

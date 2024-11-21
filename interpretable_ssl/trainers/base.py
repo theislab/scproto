@@ -23,8 +23,8 @@ class TrainerBase:
             self.set_experiment_name()
         self.params = self.__dict__.copy()
         self.create_dump_path()
-        if self.training_type != "semi_supervised" and self.training_type != "fully_supervised":
-            self.pretraining_epochs += self.fine_tuning_epochs
+        # if self.training_type != "semi_supervised" and self.training_type != "fully_supervised":
+        #     self.pretraining_epochs += self.fine_tuning_epochs
 
     def get_metric_file_path(self, split):
         if self.model_name_version == 3:
