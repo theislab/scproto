@@ -14,7 +14,7 @@ import psutil
 from interpretable_ssl.trainers.base import TrainerBase
 
 from interpretable_ssl.evaluation.metric_generator import *
-
+from interpretable_ssl.datasets.immune import *
 
 class ExperimentEvaluator(ExperimentRunner):
     def __init__(self, dataset, **kwargs):
@@ -28,80 +28,86 @@ class ExperimentEvaluator(ExperimentRunner):
         self.trainers = []
 
     def create_trainer(self, params, model_type):
+        params['debug'] = True
+        params['dataset'] = self.dataset
+        params['ref_query'] = self.ref_query
         """Create a trainer instance based on the model type and parameters."""
         if model_type == "swav":
-            trainer = SwAV(
-                nmb_crops=params.get("nmb_crops", self.original_defaults["nmb_crops"]),
-                is_swav=1,
-                num_prototypes=params.get(
-                    "num_prototypes", self.original_defaults["num_prototypes"]
-                ),
-                latent_dims=params.get(
-                    "latent_dims", self.original_defaults["latent_dims"]
-                ),
-                batch_size=params.get(
-                    "batch_size", self.original_defaults["batch_size"]
-                ),
-                augmentation_type=params.get(
-                    "augmentation_type", self.original_defaults["augmentation_type"]
-                ),
-                epsilon=params.get("epsilon", self.original_defaults["epsilon"]),
-                cvae_loss_scaler=params.get(
-                    "cvae_loss_scaler", self.original_defaults["cvae_loss_scaler"]
-                ),
-                prot_decoding_loss_scaler=params.get(
-                    "prot_decoding_loss_scaler",
-                    self.original_defaults["prot_decoding_loss_scaler"],
-                ),
-                model_version=params.get(
-                    "model_version", self.original_defaults["model_version"]
-                ),
-                experiment_name=params.get(
-                    "experiment_name", self.original_defaults["experiment_name"]
-                ),
-                k_neighbors=params.get(
-                    "k_neighbors", self.original_defaults["k_neighbors"]
-                ),
-                dimensionality_reduction=params.get(
-                    "dimensionality_reduction",
-                    self.original_defaults["dimensionality_reduction"],
-                ),
-                training_type=params.get(
-                    "training_type", self.original_defaults["training_type"]
-                ),
-                dataset_id=params.get(
-                    "dataset_id", self.original_defaults["dataset_id"]
-                ),
-                dataset=self.dataset,
-                ref_query=self.ref_query,
-                debug=params.get("debug", True),  # Assuming debug=True is a default,
-                # no_data='True',
-                model_name_version=params.get(
-                    "model_name_version", self.original_defaults["model_name_version"]
-                ),
-            )
+            trainer = SwAV(**params)
+                # nmb_crops=params.get("nmb_crops", self.original_defaults["nmb_crops"]),
+                # is_swav=1,
+                # num_prototypes=params.get(
+                #     "num_prototypes", self.original_defaults["num_prototypes"]
+                # ),
+                # latent_dims=params.get(
+                #     "latent_dims", self.original_defaults["latent_dims"]
+                # ),
+                # batch_size=params.get(
+                #     "batch_size", self.original_defaults["batch_size"]
+                # ),
+                # augmentation_type=params.get(
+                #     "augmentation_type", self.original_defaults["augmentation_type"]
+                # ),
+                # epsilon=params.get("epsilon", self.original_defaults["epsilon"]),
+                # cvae_loss_scaler=params.get(
+                #     "cvae_loss_scaler", self.original_defaults["cvae_loss_scaler"]
+                # ),
+                # prot_decoding_loss_scaler=params.get(
+                #     "prot_decoding_loss_scaler",
+                #     self.original_defaults["prot_decoding_loss_scaler"],
+                # ),
+                # model_version=params.get(
+                #     "model_version", self.original_defaults["model_version"]
+                # ),
+                # experiment_name=params.get(
+                #     "experiment_name", self.original_defaults["experiment_name"]
+                # ),
+                # k_neighbors=params.get(
+                #     "k_neighbors", self.original_defaults["k_neighbors"]
+                # ),
+                # dimensionality_reduction=params.get(
+                #     "dimensionality_reduction",
+                #     self.original_defaults["dimensionality_reduction"],
+                # ),
+                # training_type=params.get(
+                #     "training_type", self.original_defaults["training_type"]
+                # ),
+                # dataset_id=params.get(
+                #     "dataset_id", self.original_defaults["dataset_id"]
+                # ),
+                # dataset=self.dataset,
+                # ref_query=self.ref_query,
+                # debug=params.get("debug", True),  # Assuming debug=True is a default,
+                # # no_data='True',
+                # model_name_version=params.get(
+                #     "model_name_version", self.original_defaults["model_name_version"]
+                # ),
+                # temperature=params.get(
+                #     "temperature", self.original_defaults["temperature"]
+                # ),
+            # )
         elif model_type == "scpoli":
-            trainer = OriginalTrainer(
-                latent_dims=params.get(
-                    "latent_dims", self.original_defaults["latent_dims"]
-                ),
-                batch_size=params.get(
-                    "batch_size", self.original_defaults["batch_size"]
-                ),
-                debug=params.get("debug", True),  # Assuming debug=True is a default
-                experiment_name=params.get(
-                    "experiment_name", self.original_defaults["experiment_name"]
-                ),
-                dataset_id=params.get(
-                    "dataset_id", self.original_defaults["dataset_id"]
-                ),
-                dataset=self.dataset,
-                ref_query=self.ref_query,
-                # no_data='True',
-                model_name_version=params.get(
-                    "model_name_version", self.original_defaults["model_name_version"]
-                ),
-            )
+            trainer = OriginalTrainer(**params)
+            #     latent_dims=params.get(
+            #         "latent_dims", self.original_defaults["latent_dims"]
+            #     ),
+            #     batch_size=params.get(
+            #         "batch_size", self.original_defaults["batch_size"]
+            #     ),
+            #     debug=params.get("debug", True),  # Assuming debug=True is a default
+            #     experiment_name=params.get(
+            #         "experiment_name", self.original_defaults["experiment_name"]
+            #     ),
+            #     dataset_id=params.get(
+            #         "dataset_id", self.original_defaults["dataset_id"]
+            #     ),
+            #     dataset=self.dataset,
+            #     ref_query=self.ref_query,
+            #     # no_data='True',
+            #     model_name_version=params.get(
+            #         "model_name_version", self.original_defaults["model_name_version"]
+            #     ),
+            # )
         else:
             raise ValueError("Unsupported model type: {}".format(model_type))
 
@@ -193,11 +199,12 @@ class ExperimentEvaluator(ExperimentRunner):
             ]
         ]
         df = res.round(5).drop_duplicates()
+        df.index = [idx.replace('_aug_comm', '') if 'scpoli' in idx else idx for idx in df.index]
 
         scpoli_df = df[df.index.str.contains("scpoli")]
         threshold = scpoli_df["scib total"].max()
 
-        df = df[df["scib total"] >= threshold]
+        # df = df[df["scib total"] >= threshold]
 
         def highlight_greater(s):
             maxidx = scpoli_df["scib total"].idxmax()
@@ -214,7 +221,8 @@ class ExperimentEvaluator(ExperimentRunner):
 
 
 if __name__ == "__main__":
-    evaluator = ExperimentEvaluator()
+    ds = ImmuneDataset()
+    evaluator = ExperimentEvaluator(ds)
 
     item_to_test = {
         "swav": {
@@ -231,7 +239,6 @@ if __name__ == "__main__":
     }
 
     # Generate trainers based on parameter combinations
-    trainers = evaluator.generate_trainers(item_to_test)
+    # trainers = evaluator.generate_trainers([item_to_test])
 
-    # Evaluate the generated trainers
-    evaluator.evaluate_trainers(trainers)
+    evaluator.evaluate_results([item_to_test])
