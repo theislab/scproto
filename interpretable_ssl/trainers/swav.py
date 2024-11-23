@@ -114,7 +114,10 @@ class SwAV(AdoptiveTrainer):
         # model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
         # return model
         # else:
-        return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
+        if self.decodable_prototypes == 1:
+            return SwAVDecodableProto(self.latent_dims, self.num_prototypes, self.ref.adata)
+        else:
+            return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -666,7 +669,6 @@ class SwAV(AdoptiveTrainer):
             min_cell_cnt = adata.obs.cell_type.value_counts().min()
             max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
         self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
-
 
 if __name__ == "__main__":
     swav = SwAV()
