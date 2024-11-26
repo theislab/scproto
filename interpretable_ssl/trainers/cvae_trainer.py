@@ -61,7 +61,7 @@ class CvaeTrainer(ScpoliTrainer):
             nn.Module: The trained model.
         """
         for epoch in range(num_epochs):
-            if epoch % 5 == 0:
+            if epoch % self.umap_checkpoint_freq == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"cvae-e{epoch}")
                 

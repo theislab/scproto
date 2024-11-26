@@ -389,9 +389,23 @@ if __name__ == "__main__":
             "pretraining_epochs": [500],
             # "experiment_name": [f'test{i}' for i in range(3)]
         },
+        {
+            "experiment_name": ["debug-swav5"],
+            # "temperature": [0.1, 0.07, 0.05],
+            # "augmentation_type": ["community"],
+            # "training_type": ["semi_supervised"],
+            'prot_init': ['kmeans'],
+            "umap_checkpoint_freq": [2],
+            "checkpoint_freq": [2],
+            # 'prot_init': ['kmeans', 'random']
+            "training_type": ["pretrain"],
+            "pretraining_epochs": [500],
+            'epsilon': [0.015, 0.03]
+            # "experiment_name": [f'test{i}' for i in range(3)]
+        },
         
         {
-            "experiment_name": ["test"],
+            "experiment_name": ["decode-prot"],
             # "temperature": [0.1, 0.07, 0.05],
             # "augmentation_type": ["community"],
             # "training_type": ["semi_supervised"],
@@ -402,10 +416,12 @@ if __name__ == "__main__":
             "pretraining_epochs": [0],
             "fine_tuning_epochs": [0],
             "decodable_prototypes": [1],
+            "umap_checkpoint_freq": [2],
+            "checkpoint_freq": [2],
             # "experiment_name": [f'test{i}' for i in range(3)]
         },
         {
-            "experiment_name": ["test"],
+            "experiment_name": ["decode-prot"],
             # "temperature": [0.1, 0.07, 0.05],
             # "augmentation_type": ["community"],
             # "training_type": ["semi_supervised"],
@@ -416,12 +432,28 @@ if __name__ == "__main__":
             "pretraining_epochs": [100],
             "fine_tuning_epochs": [100],
             "decodable_prototypes": [1],
+            "umap_checkpoint_freq": [2],
+            "checkpoint_freq": [2],
+            # "experiment_name": [f'test{i}' for i in range(3)]
+        },
+        {
+            "experiment_name": ["debug-swav5"],
+            # "temperature": [0.1, 0.07, 0.05],
+            # "augmentation_type": ["community"],
+            # "training_type": ["semi_supervised"],
+            # 'prot_init': ['kmeans', 'random'],
+            "umap_checkpoint_freq": [2],
+            "checkpoint_freq": [2],
+            # 'prot_init': ['kmeans', 'random']
+            "training_type": ["pretrain"],
+            "pretraining_epochs": [500],
+            "sinkhorn_iterations": [5, 10, 15]
             # "experiment_name": [f'test{i}' for i in range(3)]
         }
     ]
 
     pretrain_effect = []
-    for item_to_test in test_[:1]:
+    for item_to_test in test_[-3:-1]:
         # Run all experiments
         # if 'pretraining_epochs' not in item_to_test:
         #     item_to_test['experiment_name'] = ['1000e']
@@ -429,3 +461,4 @@ if __name__ == "__main__":
         #     item_to_test['num_prototypes'] = [16]
         # item_to_test['prot_init'] = ['random']
         runner.run_multiple_experiments(item_to_test, True)
+# squeue -u fatemehs.hashemig -o "%.18i %.9P %.50j %.8u %.8T %.10M %.9l %.6D %R" | grep decode-prot | awk '{print $1}' | xargs scancel
