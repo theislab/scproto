@@ -16,9 +16,10 @@ def get_defaults():
         # "epochs": 300,
         "linear_eval": False,
         "only_eval": False,
-        "use_early_stopping": False,
+        "use_early_stopping": False,        
         "pretraining_epochs": 500,
         "fine_tuning_epochs": 500,
+        "cvae_epochs": 0,
         "training_type": 'semi_supervised',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
         'finetune_dataset_id': 'pbmc-immune',
@@ -49,6 +50,7 @@ def get_defaults():
         "local_rank": 0,  # swav specific
         "workers": 10,  # swav specific
         "checkpoint_freq": 25,  # swav specific
+        "umap_checkpoint_freq": 5,
         "use_fp16": False,  # swav specific
         "sync_bn": "pytorch",  # swav specific
         "syncbn_process_group_size": 8,  # swav specific
@@ -82,6 +84,9 @@ def get_defaults():
         "prot_init": 'random', #can be kmeans
         "propagation_reg": 0.0,
         "prot_emb_sim_reg": 0.0,
-        "loss_type": 'cross_entropy'
+        "loss_type": 'cross_entropy',
+        "decodable_prototypes": 0,
+        "save_temp_res": 1,
+        "temp_res_path": "temp-res"
     }
     return defaults

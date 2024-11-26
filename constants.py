@@ -49,5 +49,8 @@ ABBREVIATIONS = {
     # 'pretraining_epochs': 'pre-e',
     # 'fine_tuning_epochs': 'tune-e'
     'pretraining_epochs': 'pretrain',
-    'fine_tuning_epochs': 'finetune'
+    'fine_tuning_epochs': 'finetune',
+    "cvae_epochs": "cvae_pre",
+    'decodable_prototypes':  'dec_protos',
+    "sinkhorn_iterations": 'sink_itr'
 }

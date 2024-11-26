@@ -54,7 +54,6 @@ class SwAV(AdoptiveTrainer):
         self.use_projector_out = False
         # would be defferent when trying to finetune, keep original aug type for model path
         self.train_augmentation = self.augmentation_type
-        self.get_dump_path()
         # print(self.temperature)
         # self.set_experiment_name()
 
@@ -114,7 +113,10 @@ class SwAV(AdoptiveTrainer):
         # model = SwavBase(self.scpoli_.model, self.latent_dims, self.num_prototypes)
         # return model
         # else:
-        return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
+        if self.decodable_prototypes == 1:
+            return SwAVDecodableProto(self.latent_dims, self.num_prototypes, self.ref.adata)
+        else:
+            return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -131,11 +133,11 @@ class SwAV(AdoptiveTrainer):
 
         # model = apex.amp.initialize(model, opt_level="O1")
 
-        self.model = model
+        # self.model = model
         return model
 
     def init_prototypes(self):
-        if self.prot_init == "kmeans":
+        if self.prot_init == "kmeans" and self.decodable_prototypes==0:
             logger.info("initalizing prototypes using kmeans")
             embeddings = self.encode_ref(self.model)
             self.model.init_prototypes_kmeans(embeddings, self.nmb_prototypes)
@@ -236,7 +238,7 @@ class SwAV(AdoptiveTrainer):
             )
 
     def log_wandb_loss(self, scores, epoch):
-        _, avg_loss, cvae_loss, swav_loss, propagation_loss, prot_emb_sim_loss = scores
+        _, avg_loss, cvae_loss, swav_loss, propagation_loss, prot_emb_sim_loss, num_matches, prob_entropy = scores
         log_dict = {
             "epoch": epoch,
             "swav": swav_loss,
@@ -244,24 +246,30 @@ class SwAV(AdoptiveTrainer):
             "loss": avg_loss,
             "propagation loss": propagation_loss,
             "prot_emb_sim_loss": prot_emb_sim_loss,
+            "num matches": num_matches,
+            "match ratio": num_matches / self.batch_size,
+            "clustering counts entropy": prob_entropy
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
-        wandb.log(log_dict)
+        if not self.debug:
+            wandb.log(log_dict)
+        else:
+            print(log_dict)
 
     def train(self, epochs=None):
         self.create_dump_path()
         if self.check_scib_metrics_exist():
             self.model = self.load_model()
             return
-        self.init_wandb(self.dump_path)
+        
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
         for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch}============")
 
-            if epoch % 5 == 0:
+            if epoch % self.umap_checkpoint_freq == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
 
@@ -302,6 +310,51 @@ class SwAV(AdoptiveTrainer):
         query_emb = self.encode_query(self.model)
         return {'propagation loss': self.model.propagation(ref_emb).cpu().item()}, {'propagation loss': self.model.propagation(query_emb).cpu().item()}
     
+    def get_p(self, s):
+        return F.softmax(s / self.temperature)
+
+    def calculate_pair_matching(self, scores):
+        def get_hard_cluster(tensor):
+            # Find the indices of the maximum values along each row
+            max_indices = torch.argmax(tensor, dim=1)
+            
+            # Create a one-hot tensor with the same shape as the input
+            one_hot = torch.zeros_like(tensor)
+            
+            # Scatter 1s into the one-hot tensor at the max indices
+            one_hot.scatter_(1, max_indices.unsqueeze(1), 1.0)
+            return one_hot
+
+        def calculate_entropy(tensor):
+            """
+            Calculate the entropy of a tensor.
+
+            Parameters:
+                tensor (torch.Tensor): Input tensor.
+
+            Returns:
+                float: Entropy of the tensor.
+            """
+            # Flatten the tensor and convert to probabilities
+            flattened = tensor.flatten()
+            probabilities = flattened / flattened.sum()
+
+            # Ensure no zero values (to avoid log(0))
+            probabilities = probabilities[probabilities > 0]
+
+            # Compute entropy
+            entropy = -torch.sum(probabilities * torch.log(probabilities))
+            return entropy.item()
+
+        score_t, score_s = scores[:self.batch_size], scores[self.batch_size:2*self.batch_size]
+        p_t, p_s = self.get_p(score_t), self.get_p(score_s)
+        h_t, h_s = get_hard_cluster(score_t), get_hard_cluster(score_s)
+        c_t, c_s = torch.argmax(h_t, dim=1), torch.argmax(h_s, dim=1)
+        matches = c_t == c_s
+        num_matches = matches.sum().item()
+        entropy = calculate_entropy(p_t.sum(0)) + calculate_entropy(p_s.sum(0))
+        return num_matches, entropy / 2
+        
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -311,7 +364,8 @@ class SwAV(AdoptiveTrainer):
         # prot_decoding_losses = AverageMeter()
         propagation_losses = AverageMeter()
         prot_emb_sim_losses = AverageMeter()
-
+        num_match_avg, prob_entropy_avg = AverageMeter(), AverageMeter()
+        
         self.model.train()
         use_the_queue = False
 
@@ -328,15 +382,16 @@ class SwAV(AdoptiveTrainer):
 
             inputs = self.move_input_on_device(inputs)
             inputs = reshape_and_reorder_dict(inputs)
-            _, projector_out, prot_mapped, cvae_loss, prot_decoding_loss = self.model(
+            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(
                 inputs
             )
             propagation, prot_emb_sim = prot_decoding_loss
 
             projector_out = projector_out.detach()
             swav_loss = self.compute_swav_loss(
-                projector_out, prot_mapped, bs, use_the_queue
+                projector_out, scores, bs, use_the_queue
             )
+            num_match, prob_entropy = self.calculate_pair_matching(scores)
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
@@ -369,7 +424,9 @@ class SwAV(AdoptiveTrainer):
             # prot_decoding_losses.update(prot_decoding_loss.item(), inputs["x"].size(0))
             propagation_losses.update(propagation.item(), inputs["x"].size(0))
             prot_emb_sim_losses.update(prot_emb_sim.item(), inputs["x"].size(0))
-
+            num_match_avg.update(num_match, bs)
+            prob_entropy_avg.update(prob_entropy, bs)
+            
             batch_time.update(time.time() - end)
             end = time.time()
             if iteration % 50 == 0:
@@ -388,6 +445,8 @@ class SwAV(AdoptiveTrainer):
             swav_losses.avg,
             propagation_losses.avg,
             prot_emb_sim_losses.avg,
+            num_match_avg.avg,
+            prob_entropy_avg.avg
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
@@ -395,11 +454,11 @@ class SwAV(AdoptiveTrainer):
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = self.lr_schedule[iteration]
 
-    def compute_swav_loss(self, embedding, output, bs, use_the_queue):
+    def compute_swav_loss(self, embedding, scores, bs, use_the_queue):
         loss = 0
         for i, crop_id in enumerate(self.crops_for_assign):
             with torch.no_grad():
-                out = output[bs * crop_id : bs * (crop_id + 1)].detach()
+                out = scores[bs * crop_id : bs * (crop_id + 1)].detach()
 
                 if self.queue is not None:
                     if use_the_queue or not torch.all(self.queue[i, -1, :] == 0):
@@ -420,7 +479,7 @@ class SwAV(AdoptiveTrainer):
             #     subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
             for v in np.delete(np.arange(np.sum(self.nmb_crops)), crop_id):
                 x = (
-                    output[bs * v : bs * (v + 1)] / self.temperature
+                    scores[bs * v : bs * (v + 1)] / self.temperature
                 )  # logits for the v-th crop
                 if self.loss_type == "kl1":
                     # KL divergence from q to p (KL(q || p))
@@ -547,20 +606,20 @@ class SwAV(AdoptiveTrainer):
             all_labels.reshape(-1),  # Optional augmentation labels
         )
 
-    def encode_batch(self, model, batch):
-        batch = self.move_input_on_device(batch)
-        model.eval()
-        with torch.no_grad():
-            encoder_out, x, x_mapped = model.encode(batch)
-        if self.use_projector_out:
-            return x
-        else:
-            return encoder_out
+    # def encode_batch(self, model, batch):
+    #     batch = self.move_input_on_device(batch)
+    #     model.eval()
+    #     with torch.no_grad():
+    #         encoder_out, x, x_mapped = model.encode(batch)
+    #     if self.use_projector_out:
+    #         return x
+    #     else:
+    #         return encoder_out
 
-    def get_scpoli(self, pretrained_model, return_model=True):
-        if return_model:
-            return pretrained_model.scpoli_encoder
-        return pretrained_model.scpoli_
+    # def get_scpoli(self, pretrained_model, return_model=True):
+    #     if return_model:
+    #         return pretrained_model.scpoli_encoder
+    #     return pretrained_model.scpoli_
 
     # def get_scpoli(self, pretrained_model):
 
@@ -576,10 +635,10 @@ class SwAV(AdoptiveTrainer):
         self.use_projector_out = False
         return ref, query
 
-    def get_umap_path(self, data_part="ref"):
-        if self.use_projector_out:
-            return self.get_dump_path() + f"/{data_part}-projected-umap.png"
-        return super().get_umap_path(data_part)
+    # def get_umap_path(self, data_part="ref"):
+    #     if self.use_projector_out:
+    #         return self.get_dump_path() + f"/{data_part}-projected-umap.png"
+    #     return super().get_umap_path(data_part)
 
     def additional_plots(self):
         if self.use_projector:
@@ -643,6 +702,7 @@ class SwAV(AdoptiveTrainer):
             )
 
     def finetune(self):
+        print(f'-------finetuning: {self.fine_tuning_epochs}----------')
         # old_aug_type = self.augmentation_type
 
         # scpoli_query = scPoli.load_query_data(
@@ -666,7 +726,6 @@ class SwAV(AdoptiveTrainer):
             min_cell_cnt = adata.obs.cell_type.value_counts().min()
             max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
         self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
-
 
 if __name__ == "__main__":
     swav = SwAV()
