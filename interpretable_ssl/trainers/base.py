@@ -6,6 +6,11 @@ from constants import *
 from interpretable_ssl.utils import log_time
 from interpretable_ssl.model_name import generate_model_name
 
+from scarches.dataset.scpoli.anndata import MultiConditionAnnotatedDataset
+import scarches.trainers.scpoli._utils as scpoli_utils
+from torch.utils.data import DataLoader
+
+
 class TrainerBase:
     # @log_time('trainer base')
     def __init__(self, **kwargs) -> None:
@@ -23,6 +28,7 @@ class TrainerBase:
             self.set_experiment_name()
         self.params = self.__dict__.copy()
         self.create_dump_path()
+        self.create_temp_res_path()
         # if self.training_type != "semi_supervised" and self.training_type != "fully_supervised":
         #     self.pretraining_epochs += self.fine_tuning_epochs
 
@@ -54,6 +60,11 @@ class TrainerBase:
         if not os.path.exists(self.dump_path):
             os.makedirs(self.dump_path)
 
+    def create_temp_res_path(self):
+        temp_res_path = self.get_temp_res_path()
+        if self.save_temp_res == 1 and not os.path.exists(temp_res_path):
+            os.makedirs(temp_res_path)
+
     def set_experiment_name(self):
         if self.experiment_name == "":
             self.experiment_name = None
@@ -64,8 +75,6 @@ class TrainerBase:
             self.experiment_name = f"swav"
         else:
             self.set_old_experiment_name()
-
-        
 
     def set_old_experiment_name(self):
         if self.dump_name_version < 4:
@@ -103,7 +112,6 @@ class TrainerBase:
 
         # return name
         return generate_model_name(get_defaults().copy(), self.params)
-
 
     def get_model_name(self):
         if self.model_name_version >= 5:
@@ -152,6 +160,9 @@ class TrainerBase:
             dump_path = self.add_additional_parameters(dump_path)
 
         return dump_path
+
+    def get_temp_res_path(self):
+        return f"{self.temp_res_path}/{self.get_model_name()}/"
 
     def get_general_dump_path(self):
         name = self.get_model_name()
@@ -228,3 +239,26 @@ class TrainerBase:
                         )
 
         return dump_path
+
+    def prepare_scpoli_dataloader(self, adata, scpoli_model, shuffle=True):
+
+        if "condition_combined" not in adata.obs:
+            adata.obs["conditions_combined"] = adata.obs[[self.condition_key]].apply(
+                lambda x: "_".join(x), axis=1
+            )
+        dataset = MultiConditionAnnotatedDataset(
+            adata,
+            condition_keys=[self.condition_key],
+            # cell_type_keys=[self.cell_type_key],
+            condition_encoders=scpoli_model.condition_encoders,
+            conditions_combined_encoder=scpoli_model.conditions_combined_encoder,
+            # cell_type_encoder=scpoli_model.cell_type_encoder,
+        )
+
+        loader = DataLoader(
+            dataset,
+            batch_size=self.batch_size,
+            collate_fn=scpoli_utils.custom_collate,
+            shuffle=shuffle,
+        )
+        return loader

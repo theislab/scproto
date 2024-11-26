@@ -9,27 +9,25 @@ from interpretable_ssl.utils import log_time
 
 class Trainer(TrainerBase):
     # @log_time('trainer')
-    def __init__(self, debug=False, dataset=None, ref_query = None, **kwargs) -> None:
+    def __init__(self, debug=False, dataset=None, ref_query=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.device = get_device()
         self.dataset = dataset
         if self.dataset is None:
             print(f"dataset is None, loading {self.dataset_id}")
-            if self.no_data == 'False':
+            if self.no_data == "False":
                 self.dataset = self.get_dataset(self.dataset_id)
         self.input_dim = self.dataset.x_dim
-        
+
         if ref_query is None:
             self.ref, self.query = self.dataset.get_train_test()
         else:
             self.ref, self.query = ref_query
         self.debug = debug
         self.ref_latent, self.query_latent, self.all_latent = None, None, None
-        
+
         if not self.debug:
             self.init_wandb()
-
-    
 
     def get_model(self):
         pass
@@ -46,8 +44,8 @@ class Trainer(TrainerBase):
 
     def init_wandb(self, path=None):
         if path is None:
-                path = self.get_dump_path()
-        set_job_name = (self.job_name is None) or (self.job_name == '')
+            path = self.get_dump_path()
+        set_job_name = (self.job_name is None) or (self.job_name == "")
         if set_job_name:
             self.job_name = f"{self.get_model_name()}/{self.dataset}"
         wandb.init(

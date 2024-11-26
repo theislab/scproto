@@ -145,7 +145,7 @@ def plot_umap(cell_umap, prototype_umap, cell_types, study_labels, augmentation_
     else:
         plt.show()
 
-def plot_3umaps(cell_umap, prototype_umap, cell_types, study_labels, save_plot=True, save_path=None):
+def plot_3umaps(cell_umap, prototype_umap, cell_types, study_labels, save_plot=True, save_path_list=None):
     
     def plot_scatter(ax, data_umap, labels, label_title, prototypes=None, exclude_prototypes=False):
         unique_labels = np.unique(labels)
@@ -184,7 +184,8 @@ def plot_3umaps(cell_umap, prototype_umap, cell_types, study_labels, save_plot=T
 
     plt.tight_layout(rect=[0, 0.2, 1, 1])
 
-    if save_plot:
-        fig.savefig(save_path, bbox_inches='tight', pad_inches=0.5)  # Increase pad_inches as needed
+    if save_path_list is not None:
+        for save_path in save_path_list:
+            fig.savefig(save_path, bbox_inches='tight', pad_inches=0.5)  # Increase pad_inches as needed
     
     return fig

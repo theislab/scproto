@@ -361,21 +361,67 @@ if __name__ == "__main__":
     evaluate_job_count(items_to_test)
 
     test_ = [
+        # {
+        #     "experiment_name": ["debugs"],
+        #     # "temperature": [0.1, 0.07, 0.05],
+        #     # "augmentation_type": ["community"],
+        #     # "training_type": ["semi_supervised"],
+        #     'prot_init': ['kmeans'],
+        #     # 'prot_init': ['kmeans', 'random']
+        #     "cvae_epochs": [6],
+        #     "training_type": ["pretrain_encoder"],
+        #     "pretraining_epochs": [6],
+        #     "fine_tuning_epochs": [6],
+        #     "decodable_prototypes": [1],
+        #     # "experiment_name": [f'test{i}' for i in range(3)]
+        # },
+        
         {
-            "experiment_name": ["test2"]
+            "experiment_name": ["debug-swav5"],
+            # "temperature": [0.1, 0.07, 0.05],
+            # "augmentation_type": ["community"],
+            # "training_type": ["semi_supervised"],
+            'prot_init': ['kmeans', 'random'],
+            "umap_checkpoint_freq": [2],
+            "checkpoint_freq": [2],
+            # 'prot_init': ['kmeans', 'random']
+            "training_type": ["pretrain"],
+            "pretraining_epochs": [500],
+            # "experiment_name": [f'test{i}' for i in range(3)]
+        },
+        
+        {
+            "experiment_name": ["test"],
             # "temperature": [0.1, 0.07, 0.05],
             # "augmentation_type": ["community"],
             # "training_type": ["semi_supervised"],
             # 'prot_init': ['kmeans']
             # 'prot_init': ['kmeans', 'random']
-            # "pretraining_epochs": [6],
-            # "fine_tuning_epochs": [6],
+            "cvae_epochs": [100, 300, 500],
+            "training_type": ["pretrain_encoder"],
+            "pretraining_epochs": [0],
+            "fine_tuning_epochs": [0],
+            "decodable_prototypes": [1],
+            # "experiment_name": [f'test{i}' for i in range(3)]
+        },
+        {
+            "experiment_name": ["test"],
+            # "temperature": [0.1, 0.07, 0.05],
+            # "augmentation_type": ["community"],
+            # "training_type": ["semi_supervised"],
+            # 'prot_init': ['kmeans']
+            # 'prot_init': ['kmeans', 'random']
+            "cvae_epochs": [100],
+            "training_type": ["pretrain_encoder"],
+            "pretraining_epochs": [100],
+            "fine_tuning_epochs": [100],
+            "decodable_prototypes": [1],
             # "experiment_name": [f'test{i}' for i in range(3)]
         }
     ]
 
     pretrain_effect = []
-    for item_to_test in items_to_test:
+    for item_to_test in test_[:1]:
         # Run all experiments
         # if 'pretraining_epochs' not in item_to_test:
         #     item_to_test['experiment_name'] = ['1000e']

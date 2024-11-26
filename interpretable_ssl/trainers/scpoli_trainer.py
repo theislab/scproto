@@ -19,7 +19,7 @@ class ScpoliTrainer(Trainer):
     def __init__(
         self, debug=False, dataset=None, ref_query=None, parser=None, **kwargs
     ) -> None:
-        
+
         self.default_values = get_defaults().copy()
         self.update_kwargs(parser, kwargs)
         super().__init__(debug, dataset, ref_query, **kwargs)
@@ -70,7 +70,6 @@ class ScpoliTrainer(Trainer):
         return parser
 
     def load_model(self):
-
         model = self.get_model(self.ref.adata)
         path = self.get_model_path()
         model.load_state_dict(torch.load(path)["model_state_dict"])
@@ -85,49 +84,59 @@ class ScpoliTrainer(Trainer):
         return model
 
     def adapt_ref_model(self, ref_model, adata):
+        query_model = deepcopy(ref_model)
         scpoli_query = scPoli.load_query_data(
             adata=adata,
-            reference_model=self.get_scpoli(ref_model, False),
+            reference_model=self.get_scpoli(query_model, False),
             labeled_indices=[],
         )
-        ref_model.set_scpoli_encoder(scpoli_query.model)
-        ref_model.to(self.device)
-        return ref_model
-        
+        query_model.set_scpoli_encoder(scpoli_query.model)
+        query_model.to(self.device)
+        return query_model
+
     def move_input_on_device(self, inputs):
         for key in inputs:
             inputs[key] = inputs[key].to(self.device)
         return inputs
 
-    def prepare_scpoli_dataloader(self, adata, scpoli_model, shuffle=True):
+    # def prepare_scpoli_dataloader(self, adata, scpoli_model, shuffle=True):
 
-        dataset = MultiConditionAnnotatedDataset(
-            adata,
-            condition_keys=[self.condition_key],
-            # cell_type_keys=[self.cell_type_key],
-            condition_encoders=scpoli_model.condition_encoders,
-            conditions_combined_encoder=scpoli_model.conditions_combined_encoder,
-            # cell_type_encoder=scpoli_model.cell_type_encoder,
-        )
+    #     dataset = MultiConditionAnnotatedDataset(
+    #         adata,
+    #         condition_keys=[self.condition_key],
+    #         # cell_type_keys=[self.cell_type_key],
+    #         condition_encoders=scpoli_model.condition_encoders,
+    #         conditions_combined_encoder=scpoli_model.conditions_combined_encoder,
+    #         # cell_type_encoder=scpoli_model.cell_type_encoder,
+    #     )
 
-        loader = DataLoader(
-            dataset,
-            batch_size=self.batch_size,
-            collate_fn=scpoli_utils.custom_collate,
-            shuffle=shuffle,
-        )
-        return loader
+    #     loader = DataLoader(
+    #         dataset,
+    #         batch_size=self.batch_size,
+    #         collate_fn=scpoli_utils.custom_collate,
+    #         shuffle=shuffle,
+    #     )
+    #     return loader
 
     def encode_batch(self, model, batch):
-        pass
+        batch = self.move_input_on_device(batch)
+        model.eval()
+        with torch.no_grad():
+            encoder_out, x, x_mapped = model.encode(batch)
+        # if self.use_projector_out:
+        #     return x
+        # else:
+        return encoder_out
 
     def get_scpoli(self, pretrained_model, return_model=True):
-        pass
+        if return_model:
+            return pretrained_model.scpoli_encoder
+        return pretrained_model.scpoli_
 
     def encode_ref(self, model=None):
         return self.encode_adata(self.ref.adata, model)
 
-    def encode_query(self, ref_model = None):
+    def encode_query(self, ref_model=None):
         if ref_model is None:
             model = self.load_query_model()
         else:
@@ -146,18 +155,18 @@ class ScpoliTrainer(Trainer):
     def get_model_prototypes(self, model):
         return None
 
-    def calculate_umaps(self, trained_model=True):
-        if trained_model:
-            model = self.load_model()
-        else:
-            model = self.get_model()
-            model.to("cuda")
-        embeddings = self.encode_ref(model)
-        prototypes = self.get_model_prototypes(model)
+    # def calculate_umaps(self, trained_model=True):
+    #     if trained_model:
+    #         model = self.load_model()
+    #     else:
+    #         model = self.get_model()
+    #         model.to("cuda")
+    #     embeddings = self.encode_ref(model)
+    #     prototypes = self.get_model_prototypes(model)
 
-        self.embedding_umap, self.prototype_umap = calculate_umap(
-            embeddings, prototypes
-        )
+    #     self.embedding_umap, self.prototype_umap = calculate_umap(
+    #         embeddings, prototypes
+    #     )
 
     def get_umap_path(self, data_part="ref"):
         pass
@@ -177,13 +186,13 @@ class ScpoliTrainer(Trainer):
         )
 
     def plot_ref_umap(self, save_plot=True, name_postfix=None, model=None):
-        
+
         if model is None:
             model = self.load_model()
         if name_postfix is not None:
             name = f"ref-{name_postfix}"
         else:
-            name = f'ref'
+            name = f"ref"
         return self.plot_umap(model, self.ref.adata, name, save_plot)
 
     def plot_query_umap(self, save_plot=True):
@@ -195,13 +204,15 @@ class ScpoliTrainer(Trainer):
 
     def calculate_other_metrics(self):
         return {}, {}
-    
+
     def save_metrics(self):
         ref_other, query_other = self.calculate_other_metrics()
         ref_latent = self.encode_ref(self.model)
         MetricCalculator(
-            self.ref.adata, [ref_latent], self.dump_path,
-            save_path=self.get_metric_file_path("ref")
+            self.ref.adata,
+            [ref_latent],
+            self.dump_path,
+            save_path=self.get_metric_file_path("ref"),
         ).calculate(ref_other)
         # calculate_scib_metrics_using_benchmarker(
         #     self.ref.adata, ref_latent, self.get_scib_file_path('ref')

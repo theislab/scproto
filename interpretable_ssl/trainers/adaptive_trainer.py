@@ -2,7 +2,7 @@ from interpretable_ssl.trainers.scpoli_trainer import *
 from torch.utils.data import random_split
 from logging import getLogger
 from interpretable_ssl.utils import log_time
-
+from interpretable_ssl.trainers.cvae_trainer import CvaeTrainer
 logger = getLogger()
 
 
@@ -70,12 +70,19 @@ class AdoptiveTrainer(ScpoliTrainer):
     def train_fully_supervised(self):
         pass
 
+    def pretrain_decodabale_proto(self):
+        cvae_trainer = CvaeTrainer(self.model, self.batch_size, self.debug, self.dataset, (self.ref, self.query), original_ref=self.original_ref)
+        cvae_trainer.train(self.cvae_epochs)
+        
     def pretrain_encoder(self):
-        self.get_scpoli(self.model, False).train(
-            n_epochs=self.pretraining_epochs,
-            pretraining_epochs=self.pretraining_epochs,
-            eta=5,
-        )
+        if self.decodable_prototypes == 0:
+            self.get_scpoli(self.model, False).train(
+                n_epochs=self.cvae_epochs,
+                pretraining_epochs=self.cvae_epochs,
+                eta=5,
+            )
+        else:
+            self.pretrain_decodabale_proto()
 
     def train_pretrain_encoder(self):
         if self.fine_tuning_epochs > 0:
@@ -84,7 +91,7 @@ class AdoptiveTrainer(ScpoliTrainer):
         self.setup()
         self.pretrain_encoder()
         self.init_prototypes()
-        
+
         # pretrain with swav
         self.train()
 
@@ -104,8 +111,10 @@ class AdoptiveTrainer(ScpoliTrainer):
         img_name = f"/{data_part}-umap"
         if self.finetuning:
             img_name = f"{img_name}_finetuned"
-
-        return self.get_dump_path() + f"/{img_name}.png"
+        umap_paths = [self.get_dump_path() + f"/{img_name}.png"]
+        if self.save_temp_res == 1:
+            umap_paths.append(self.get_temp_res_path() + f"/{img_name}.png")
+        return umap_paths
 
     def load_adopt(self):
         model = self.load_model()
@@ -113,7 +122,8 @@ class AdoptiveTrainer(ScpoliTrainer):
         return model
 
     def run(self):
-
+        if not self.debug:
+            self.init_wandb(self.dump_path)
         if self.training_type == "semi_supervised":
             self.train_semi_supervised()
         elif self.training_type == "transfer_learning":
