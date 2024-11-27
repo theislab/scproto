@@ -96,6 +96,30 @@ class SwavBase(nn.Module):
         with torch.no_grad():
             self.prototypes.weight.copy_(w)
 
+    def prototypes_avg_distance(self):
+        """
+        Calculate the average of the average distances for each tensor in a (p, d) tensor.
+
+        Args:
+            tensor (torch.Tensor): Input tensor of shape (p, d).
+
+        Returns:
+            float: The average of the average distances for all p tensors.
+        """
+        tensor = self.get_prototypes()
+        # Calculate pairwise distances using broadcasting
+        pairwise_diff = tensor.unsqueeze(1) - tensor.unsqueeze(0)  # Shape: (p, p, d)
+        pairwise_distances = torch.norm(pairwise_diff, dim=2)  # Shape: (p, p)
+
+        # Average distance for each tensor (exclude self-distance by setting diagonal to 0)
+        pairwise_distances.fill_diagonal_(0)
+        avg_distances_per_tensor = pairwise_distances.sum(dim=1) / (tensor.shape[0] - 1)
+
+        # Average of these distances
+        overall_avg_distance = avg_distances_per_tensor.mean().item()
+
+        return overall_avg_distance
+
 
 class SwAVModel(SwavBase):
     def __init__(

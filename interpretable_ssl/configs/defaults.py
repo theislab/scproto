@@ -79,8 +79,9 @@ def get_defaults():
         'model_type': 'swav',
         'job_name': '',
         'no_data': 'False',
-        "freezable_prototypes": True,  # swav specific (should be true)
+        "freezable_prototypes": 0,  # swav specific (should be true)
         "freeze_prototypes_niters": 0,  # swav specific
+        "freeze_prototypes_nepochs": 0,
         "prot_init": 'random', #can be kmeans
         "propagation_reg": 0.0,
         "prot_emb_sim_reg": 0.0,

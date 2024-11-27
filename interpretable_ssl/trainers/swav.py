@@ -114,7 +114,9 @@ class SwAV(AdoptiveTrainer):
         # return model
         # else:
         if self.decodable_prototypes == 1:
-            return SwAVDecodableProto(self.latent_dims, self.num_prototypes, self.ref.adata)
+            return SwAVDecodableProto(
+                self.latent_dims, self.num_prototypes, self.ref.adata
+            )
         else:
             return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
 
@@ -137,7 +139,7 @@ class SwAV(AdoptiveTrainer):
         return model
 
     def init_prototypes(self):
-        if self.prot_init == "kmeans" and self.decodable_prototypes==0:
+        if self.prot_init == "kmeans" and self.decodable_prototypes == 0:
             logger.info("initalizing prototypes using kmeans")
             embeddings = self.encode_ref(self.model)
             self.model.init_prototypes_kmeans(embeddings, self.nmb_prototypes)
@@ -238,7 +240,16 @@ class SwAV(AdoptiveTrainer):
             )
 
     def log_wandb_loss(self, scores, epoch):
-        _, avg_loss, cvae_loss, swav_loss, propagation_loss, prot_emb_sim_loss, num_matches, prob_entropy = scores
+        (
+            _,
+            avg_loss,
+            cvae_loss,
+            swav_loss,
+            propagation_loss,
+            prot_emb_sim_loss,
+            num_matches,
+            prob_entropy,
+        ) = scores
         log_dict = {
             "epoch": epoch,
             "swav": swav_loss,
@@ -248,7 +259,8 @@ class SwAV(AdoptiveTrainer):
             "prot_emb_sim_loss": prot_emb_sim_loss,
             "num matches": num_matches,
             "match ratio": num_matches / self.batch_size,
-            "clustering counts entropy": prob_entropy
+            "clustering counts entropy": prob_entropy,
+            "prototype distance": self.model.prototypes_avg_distance()
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
@@ -262,7 +274,7 @@ class SwAV(AdoptiveTrainer):
         if self.check_scib_metrics_exist():
             self.model = self.load_model()
             return
-        
+
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
@@ -308,8 +320,10 @@ class SwAV(AdoptiveTrainer):
     def calculate_other_metrics(self):
         ref_emb = self.encode_adata(self.original_ref.adata, self.model)
         query_emb = self.encode_query(self.model)
-        return {'propagation loss': self.model.propagation(ref_emb).cpu().item()}, {'propagation loss': self.model.propagation(query_emb).cpu().item()}
-    
+        return {"propagation loss": self.model.propagation(ref_emb).cpu().item()}, {
+            "propagation loss": self.model.propagation(query_emb).cpu().item()
+        }
+
     def get_p(self, s):
         return F.softmax(s / self.temperature)
 
@@ -317,10 +331,10 @@ class SwAV(AdoptiveTrainer):
         def get_hard_cluster(tensor):
             # Find the indices of the maximum values along each row
             max_indices = torch.argmax(tensor, dim=1)
-            
+
             # Create a one-hot tensor with the same shape as the input
             one_hot = torch.zeros_like(tensor)
-            
+
             # Scatter 1s into the one-hot tensor at the max indices
             one_hot.scatter_(1, max_indices.unsqueeze(1), 1.0)
             return one_hot
@@ -346,7 +360,10 @@ class SwAV(AdoptiveTrainer):
             entropy = -torch.sum(probabilities * torch.log(probabilities))
             return entropy.item()
 
-        score_t, score_s = scores[:self.batch_size], scores[self.batch_size:2*self.batch_size]
+        score_t, score_s = (
+            scores[: self.batch_size],
+            scores[self.batch_size : 2 * self.batch_size],
+        )
         p_t, p_s = self.get_p(score_t), self.get_p(score_s)
         h_t, h_s = get_hard_cluster(score_t), get_hard_cluster(score_s)
         c_t, c_s = torch.argmax(h_t, dim=1), torch.argmax(h_s, dim=1)
@@ -354,7 +371,12 @@ class SwAV(AdoptiveTrainer):
         num_matches = matches.sum().item()
         entropy = calculate_entropy(p_t.sum(0)) + calculate_entropy(p_s.sum(0))
         return num_matches, entropy / 2
-        
+
+    def freeze_prototypes(self, de_freeze=False):
+        for name, param in self.model.named_parameters():
+            if "prototypes" in name:
+                param.requires_grad = de_freeze
+    
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -365,7 +387,7 @@ class SwAV(AdoptiveTrainer):
         propagation_losses = AverageMeter()
         prot_emb_sim_losses = AverageMeter()
         num_match_avg, prob_entropy_avg = AverageMeter(), AverageMeter()
-        
+
         self.model.train()
         use_the_queue = False
 
@@ -382,15 +404,11 @@ class SwAV(AdoptiveTrainer):
 
             inputs = self.move_input_on_device(inputs)
             inputs = reshape_and_reorder_dict(inputs)
-            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(
-                inputs
-            )
+            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
             propagation, prot_emb_sim = prot_decoding_loss
 
             projector_out = projector_out.detach()
-            swav_loss = self.compute_swav_loss(
-                projector_out, scores, bs, use_the_queue
-            )
+            swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
             num_match, prob_entropy = self.calculate_pair_matching(scores)
             loss = (
                 swav_loss
@@ -407,15 +425,19 @@ class SwAV(AdoptiveTrainer):
             else:
                 loss.backward()
 
-            if self.freezable_prototypes:
-                if (
-                    epoch * len(self.train_loader) + iteration
-                    < self.freeze_prototypes_niters
-                ):
-                    for name, p in self.model.named_parameters():
-                        if "prototypes" in name:
-                            p.grad = None
-
+            if self.freeze_prototypes_nepochs > 0:
+                if epoch < self.freeze_prototypes_nepochs:
+                    self.freeze_prototypes()
+                else:
+                    self.freeze_prototypes(de_freeze=True)
+            # if (
+            #     epoch * len(self.train_loader) + iteration
+            #     < self.freeze_prototypes_niters
+            # ):
+            #     for name, p in self.model.named_parameters():
+            #         if "prototypes" in name:
+            #             p.grad = None
+            
             self.optimizer.step()
 
             losses.update(loss.item(), inputs["x"].size(0))
@@ -426,7 +448,7 @@ class SwAV(AdoptiveTrainer):
             prot_emb_sim_losses.update(prot_emb_sim.item(), inputs["x"].size(0))
             num_match_avg.update(num_match, bs)
             prob_entropy_avg.update(prob_entropy, bs)
-            
+
             batch_time.update(time.time() - end)
             end = time.time()
             if iteration % 50 == 0:
@@ -446,7 +468,7 @@ class SwAV(AdoptiveTrainer):
             propagation_losses.avg,
             prot_emb_sim_losses.avg,
             num_match_avg.avg,
-            prob_entropy_avg.avg
+            prob_entropy_avg.avg,
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
@@ -702,7 +724,7 @@ class SwAV(AdoptiveTrainer):
             )
 
     def finetune(self):
-        print(f'-------finetuning: {self.fine_tuning_epochs}----------')
+        print(f"-------finetuning: {self.fine_tuning_epochs}----------")
         # old_aug_type = self.augmentation_type
 
         # scpoli_query = scPoli.load_query_data(
@@ -726,6 +748,7 @@ class SwAV(AdoptiveTrainer):
             min_cell_cnt = adata.obs.cell_type.value_counts().min()
             max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
         self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
+
 
 if __name__ == "__main__":
     swav = SwAV()

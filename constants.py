@@ -40,7 +40,7 @@ ABBREVIATIONS = {
     "batch_size": 'bs',
     "temperature": "temp",
     'epsilon': "eps",
-    'freeze_prototypes_niters': 'frz',
+    'freeze_prototypes_nepochs': 'frz',
     'prot_init': 'prtInit',
     'propagation_reg': 'propReg',
     'prot_emb_sim_reg': 'PEmbSimReg',
