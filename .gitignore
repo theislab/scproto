@@ -7,3 +7,10 @@ test.ipynb
 wandb
 results
 run.sbatch
+barlow_twins_*
+Islander
+my_shinyapp
+slurm-job-out
+temp-res
+tmp_data
+swav
