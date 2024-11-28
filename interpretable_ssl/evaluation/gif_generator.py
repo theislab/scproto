@@ -3,7 +3,7 @@ import glob
 import os
 
 # Define the input folder
-input_folder = "./temp-res/daii/"
+input_folder = "./temp-res/swav_train_pretrain_hard_1/"
 
 # Patterns for non-finetuned and finetuned images
 file_pattern_base = os.path.join(input_folder, "ref-e*-umap.png")
@@ -42,7 +42,7 @@ for img_path in image_files:
     images_with_text.append(img_with_text)
 
 # Define the output folder and GIF filename
-output_folder = "./temp-res/daii/"
+output_folder = input_folder
 output_gif = os.path.join(output_folder, "umap_finetuned_with_labels.gif")
 
 # Save the images as a GIF

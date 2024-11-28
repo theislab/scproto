@@ -88,6 +88,7 @@ def get_defaults():
         "loss_type": 'cross_entropy',
         "decodable_prototypes": 0,
         "save_temp_res": 1,
-        "temp_res_path": "temp-res"
+        "temp_res_path": "temp-res",
+        "hard_clustering": 0
     }
     return defaults

@@ -249,6 +249,7 @@ class SwAV(AdoptiveTrainer):
             prot_emb_sim_loss,
             num_matches,
             prob_entropy,
+            p_entropy,
         ) = scores
         log_dict = {
             "epoch": epoch,
@@ -260,7 +261,8 @@ class SwAV(AdoptiveTrainer):
             "num matches": num_matches,
             "match ratio": num_matches / self.batch_size,
             "clustering counts entropy": prob_entropy,
-            "prototype distance": self.model.prototypes_avg_distance()
+            "prototype distance": self.model.prototypes_avg_distance(),
+            "p_t entropy": p_entropy,
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
@@ -370,13 +372,17 @@ class SwAV(AdoptiveTrainer):
         matches = c_t == c_s
         num_matches = matches.sum().item()
         entropy = calculate_entropy(p_t.sum(0)) + calculate_entropy(p_s.sum(0))
-        return num_matches, entropy / 2
+        p_avg_entropy = -torch.sum(
+            p_t * torch.log(p_t + 1e-9), dim=1
+        )  # Add small epsilon to avoid log(0)
+
+        return num_matches, entropy / 2, p_avg_entropy
 
     def freeze_prototypes(self, de_freeze=False):
         for name, param in self.model.named_parameters():
             if "prototypes" in name:
                 param.requires_grad = de_freeze
-    
+
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -386,7 +392,11 @@ class SwAV(AdoptiveTrainer):
         # prot_decoding_losses = AverageMeter()
         propagation_losses = AverageMeter()
         prot_emb_sim_losses = AverageMeter()
-        num_match_avg, prob_entropy_avg = AverageMeter(), AverageMeter()
+        num_match_avg, prob_entropy_avg, p_entropy_avg = (
+            AverageMeter(),
+            AverageMeter(),
+            AverageMeter(),
+        )
 
         self.model.train()
         use_the_queue = False
@@ -409,7 +419,7 @@ class SwAV(AdoptiveTrainer):
 
             projector_out = projector_out.detach()
             swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
-            num_match, prob_entropy = self.calculate_pair_matching(scores)
+            num_match, prob_entropy, p_entropy = self.calculate_pair_matching(scores)
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
@@ -437,7 +447,7 @@ class SwAV(AdoptiveTrainer):
             #     for name, p in self.model.named_parameters():
             #         if "prototypes" in name:
             #             p.grad = None
-            
+
             self.optimizer.step()
 
             losses.update(loss.item(), inputs["x"].size(0))
@@ -448,6 +458,7 @@ class SwAV(AdoptiveTrainer):
             prot_emb_sim_losses.update(prot_emb_sim.item(), inputs["x"].size(0))
             num_match_avg.update(num_match, bs)
             prob_entropy_avg.update(prob_entropy, bs)
+            p_entropy_avg.update(p_entropy, bs)
 
             batch_time.update(time.time() - end)
             end = time.time()
@@ -469,12 +480,37 @@ class SwAV(AdoptiveTrainer):
             prot_emb_sim_losses.avg,
             num_match_avg.avg,
             prob_entropy_avg.avg,
+            p_entropy_avg.avg,
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
         iteration = epoch * len(self.train_loader) + iteration
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = self.lr_schedule[iteration]
+
+    def hard_clusters(self, out):
+        def one_hot_max_tensor(tensor):
+            """
+            Convert each row of a tensor into a one-hot encoded row based on the maximum value in each row.
+
+            Parameters:
+            - tensor (torch.Tensor): Input 2D tensor of shape (b, p).
+
+            Returns:
+            - one_hot_tensor (torch.Tensor): One-hot encoded tensor of the same shape as the input.
+            """
+            # Find the indices of the maximum values along each row
+            max_indices = torch.argmax(tensor, dim=1)
+
+            # Create a zero tensor of the same shape as the input
+            one_hot_tensor = torch.zeros_like(tensor)
+
+            # Set the maximum indices to 1 in each row
+            one_hot_tensor[torch.arange(tensor.size(0)), max_indices] = 1
+
+            return one_hot_tensor
+
+        return one_hot_max_tensor(out)
 
     def compute_swav_loss(self, embedding, scores, bs, use_the_queue):
         loss = 0
@@ -494,6 +530,8 @@ class SwAV(AdoptiveTrainer):
                     self.queue[i, :bs] = embedding[crop_id * bs : (crop_id + 1) * bs]
 
                 q = self.distributed_sinkhorn(out)[-bs:]
+                if self.hard_clustering == 1:
+                    q = self.hard_clusters(q)
 
             subloss = 0
             # for v in np.delete(np.arange(np.sum(self.nmb_crops)), crop_id):
@@ -503,9 +541,10 @@ class SwAV(AdoptiveTrainer):
                 x = (
                     scores[bs * v : bs * (v + 1)] / self.temperature
                 )  # logits for the v-th crop
+
                 if self.loss_type == "kl1":
                     # KL divergence from q to p (KL(q || p))
-                    p = F.softmax(x, dim=1)  # convert logits to probabilities
+                    p = F.log_softmax(x, dim=1)  # convert logits to probabilities
                     subloss += torch.mean(
                         torch.sum(
                             q * (torch.log(q + 1e-9) - torch.log(p + 1e-9)), dim=1
@@ -513,7 +552,7 @@ class SwAV(AdoptiveTrainer):
                     )
                 elif self.loss_type == "kl2":
                     # KL divergence from p to q (KL(p || q))
-                    p = F.softmax(x, dim=1)  # convert logits to probabilities
+                    p = F.log_softmax(x, dim=1)  # convert logits to probabilities
                     subloss += torch.mean(
                         torch.sum(
                             p * (torch.log(p + 1e-9) - torch.log(q + 1e-9)), dim=1
@@ -628,39 +667,12 @@ class SwAV(AdoptiveTrainer):
             all_labels.reshape(-1),  # Optional augmentation labels
         )
 
-    # def encode_batch(self, model, batch):
-    #     batch = self.move_input_on_device(batch)
-    #     model.eval()
-    #     with torch.no_grad():
-    #         encoder_out, x, x_mapped = model.encode(batch)
-    #     if self.use_projector_out:
-    #         return x
-    #     else:
-    #         return encoder_out
-
-    # def get_scpoli(self, pretrained_model, return_model=True):
-    #     if return_model:
-    #         return pretrained_model.scpoli_encoder
-    #     return pretrained_model.scpoli_
-
-    # def get_scpoli(self, pretrained_model):
-
-    #     return pretrained_model.scpoli_encoder
-
-    # def get_scpoli(self):
-    #     return self.scpoli_
-
     def plot_projected_umap(self, save=True):
         self.use_projector_out = True
         ref = self.plot_ref_umap(save)
         query = self.plot_query_umap(save)
         self.use_projector_out = False
         return ref, query
-
-    # def get_umap_path(self, data_part="ref"):
-    #     if self.use_projector_out:
-    #         return self.get_dump_path() + f"/{data_part}-projected-umap.png"
-    #     return super().get_umap_path(data_part)
 
     def additional_plots(self):
         if self.use_projector:

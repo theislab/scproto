@@ -52,5 +52,6 @@ ABBREVIATIONS = {
     'fine_tuning_epochs': 'finetune',
     "cvae_epochs": "cvae_pre",
     'decodable_prototypes':  'dec_protos',
-    "sinkhorn_iterations": 'sink_itr'
+    "sinkhorn_iterations": 'sink_itr',
+    "hard_clustering": "hard"
 }

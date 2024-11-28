@@ -19,7 +19,6 @@ class ScpoliTrainer(Trainer):
     def __init__(
         self, debug=False, dataset=None, ref_query=None, parser=None, **kwargs
     ) -> None:
-
         self.default_values = get_defaults().copy()
         self.update_kwargs(parser, kwargs)
         super().__init__(debug, dataset, ref_query, **kwargs)
@@ -118,7 +117,7 @@ class ScpoliTrainer(Trainer):
     #     )
     #     return loader
 
-    def encode_batch(self, model, batch):
+    def encode_batch(self, model, batch, return_maped=False):
         batch = self.move_input_on_device(batch)
         model.eval()
         with torch.no_grad():
@@ -126,6 +125,8 @@ class ScpoliTrainer(Trainer):
         # if self.use_projector_out:
         #     return x
         # else:
+        if return_maped:
+            return x_mapped
         return encoder_out
 
     def get_scpoli(self, pretrained_model, return_model=True):
@@ -143,13 +144,13 @@ class ScpoliTrainer(Trainer):
             model = self.adapt_ref_model(ref_model, self.query.adata)
         return self.encode_adata(self.query.adata, model)
 
-    def encode_adata(self, adata, model=None):
+    def encode_adata(self, adata, model=None, return_mapped=False):
         if model is None:
             model = self.load_model()
         loader = self.prepare_scpoli_dataloader(
             adata, self.get_scpoli(model), shuffle=False
         )
-        embeddings = [self.encode_batch(model, batch) for batch in tqdm(loader)]
+        embeddings = [self.encode_batch(model, batch, return_mapped) for batch in tqdm(loader)]
         return torch.cat(embeddings)
 
     def get_model_prototypes(self, model):
