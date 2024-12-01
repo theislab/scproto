@@ -21,4 +21,5 @@ python main.py swav --num_prototypes {num_prototypes} --latent_dims {latent_dims
 --dataset_id {dataset_id} --workers {workers} --job_name {job_name} --decodable_prototypes {decodable_prototypes} \
 --cvae_epochs {cvae_epochs} --prot_init {prot_init} --checkpoint_freq {checkpoint_freq} --umap_checkpoint_freq {umap_checkpoint_freq} \
 --sinkhorn_iterations {sinkhorn_iterations} --freeze_prototypes_nepochs {freeze_prototypes_nepochs} \
---loss_type {loss_type} --hard_clustering {hard_clustering}
+--loss_type {loss_type} --hard_clustering {hard_clustering} \
+--n_components {n_components} --longest_path {longest_path} --supervised_ratio {supervised_ratio}

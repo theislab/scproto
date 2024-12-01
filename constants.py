@@ -53,5 +53,8 @@ ABBREVIATIONS = {
     "cvae_epochs": "cvae_pre",
     'decodable_prototypes':  'dec_protos',
     "sinkhorn_iterations": 'sink_itr',
-    "hard_clustering": "hard"
+    "hard_clustering": "hard",
+    "longest_path": "path",
+    "n_components": "ncomp",
+    "supervised_ratio": "supervised"
 }

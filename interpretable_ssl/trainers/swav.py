@@ -87,6 +87,8 @@ class SwAV(AdoptiveTrainer):
             k_neighbors=self.k_neighbors,
             longest_path=self.longest_path,
             dimensionality_reduction=self.dimensionality_reduction,
+            n_components=self.n_components,
+            supervised_ratio = self.supervised_ratio,
             condition_keys=[self.condition_key],
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
@@ -280,6 +282,8 @@ class SwAV(AdoptiveTrainer):
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
+        
+        self.freeze_conditional_embeddings()
         for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch}============")
 
@@ -383,6 +387,12 @@ class SwAV(AdoptiveTrainer):
             if "prototypes" in name:
                 param.requires_grad = de_freeze
 
+    def freeze_conditional_embeddings(self, de_freeze=False):
+        # Freeze all conditional embeddings
+        for embedding_layer in self.model.scpoli_encoder.embeddings:
+            for param in embedding_layer.parameters():
+                param.requires_grad = de_freeze
+                
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()

@@ -63,6 +63,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         self.graph_handler = GraphHandler(original_indicies)
         self.supervised_ratio = supervised_ratio
+        if self.augmentation_type not in ["cell_type", "nb"]:
+            self.set_graph()
         super().__init__(adata, **kwargs)
 
     def get_random_indices(self, n, specific_index):
@@ -93,19 +95,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def build_knn_graph(self):
         logger.info(f"building knn graph")
-        # can be used for random sampling
-        indicies = None
-        if self.augmentation_type == "knn":
-            graph = self._build_knn_graph_with_sklearn(indicies)
-            return graph
-
-        elif self.augmentation_type == "scanpy_knn":
-            graph = self._build_knn_graph_with_scanpy(indicies)
-            return graph
-
-        else:
-            logger.log("specified knn method not implemented")
-            return None
+        graph = self.build_scanpy_knn_graph()
+        return graph
 
     def _build_knn_graph_with_sklearn(self, indices=None):
         """
@@ -157,8 +148,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 f"PCA completed. Shape of data after PCA: {self.adata.obsm['X_pca'].shape}"
             )
 
-    # TODO: implement indices
-    def _build_knn_graph_with_scanpy(self, indices=None):
+    def _build_knn_graph_with_scanpy(self):
         """
         Build the k-nearest neighbors graph using Scanpy.
         """
@@ -188,12 +178,12 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             indices.append(nonzero_indices)
             distances.append(nonzero_distances)
 
-        logger.debug("Finished processing the kNN graph.")
+        logger.info("Finished processing the kNN graph.")
 
         indices = np.array(indices)
         distances = np.array(distances)
 
-        logger.debug(
+        logger.info(
             f"indices shape: {indices.shape}, distances shape: {distances.shape}"
         )
 
@@ -247,20 +237,13 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def set_graph(self):
         if self.knn_graph is None:
-            if self.graph_handler.generate_graph():
-                self.knn_graph = self.build_knn_graph()
-            else:
-                self.knn_graph = self.graph_handler.load_graph()
+            self.knn_graph = self.build_knn_graph()
 
     def knn_augment(self, index):
         self.set_graph()
-        knn_index = self.graph_handler.map_graph_index(index)
-        augmented_indices = [knn_index]  # Start with the original index
+        augmented_indices = [index]  # Start with the original index
         for _ in range(self.n_augmentations - 1):
-            augmented_indices.append(self.random_walk(knn_index))
-        augmented_indices = [
-            self.graph_handler.get_adata_index(knn_idx) for knn_idx in augmented_indices
-        ]
+            augmented_indices.append(self.random_walk(index))
         return augmented_indices
 
     def community_augment(self, index):
@@ -289,10 +272,24 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def cell_type_augment(self, index):
         cell_type = self.adata.obs.iloc[index]["cell_type"]
-        same_type_indices = np.where(self.adata.obs["cell_type"] == cell_type)[0]
+
+        # Apply batch filtering
+        batch = self.adata.obs.iloc[index]["study"]
+        same_type_diff_batch_indices = np.where(
+            (self.adata.obs["cell_type"] == cell_type)
+            & (self.adata.obs["study"] != batch)
+        )[0]
+
+        # Check if batch filtering leaves more than n samples
+        if len(same_type_diff_batch_indices) > self.n_augmentations:
+            # Use the batch-filtered indices
+            final_indices = same_type_diff_batch_indices
+        else:
+            # Fall back to using indices with only cell type filtering
+            final_indices = np.where(self.adata.obs["cell_type"] == cell_type)[0]
         augmented_indices = [index]  # Start with the original index
         sampled_indices = np.random.choice(
-            same_type_indices, self.n_augmentations - 1, replace=False
+            final_indices, self.n_augmentations - 1, replace=False
         )
         augmented_indices.extend(sampled_indices)
         return augmented_indices
@@ -352,7 +349,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             return (
                 self.cell_type_augment(index)
                 if random.random() < self.supervised_ratio
-                else self.community_augment(index)
+                else self.knn_augment(index)
             )
         else:
             raise ValueError(f"Invalid augmentation_type: {self.augmentation_type}")
