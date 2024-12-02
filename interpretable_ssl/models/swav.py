@@ -19,10 +19,15 @@ class SwavBase(nn.Module):
         scpoli_encoder,
         latent_dim,
         nmb_prototypes,  # , propagation_reg=0.5, prot_emb_sim_reg=0.5
+        multi_layer_proto=False,
+        np2=None,
     ):
         super().__init__()
         self.scpoli_encoder = scpoli_encoder
         self.prototypes = nn.Linear(latent_dim, nmb_prototypes, bias=False)
+        if multi_layer_proto:
+            print("initializing cell proto layer")
+            self.cell_protos = nn.Linear(latent_dim, np2, bias=False)
         self.projection_head = None
         self.l2norm = True
         # self.propagation_reg = propagation_reg
@@ -64,7 +69,16 @@ class SwavBase(nn.Module):
         # cvae_loss = recon_loss + calc_alpha_coeff * kl_loss + mmd_loss
 
         # return 2 x so it would be match the other model output
-        return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
+        if hasattr(self, "cell_protos"):
+            return (
+                x,
+                x,
+                (self.prototypes(x), self.cell_protos(x)),
+                cvae_loss,
+                prot_decoding_loss,
+            )
+        else:
+            return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
     def propagation(self, z: torch.Tensor):
         dist = torch.cdist(z, self.prototypes.weight)
@@ -91,6 +105,11 @@ class SwavBase(nn.Module):
         w = self.get_prototypes().clone()
         w = nn.functional.normalize(w, dim=1, p=2)
         self.set_prototypes(w)
+        if hasattr(self, "cell_protos"):
+            wc = self.cell_protos.weight.data
+            wc = nn.functional.normalize(wc, dim=1, p=2)
+            with torch.no_grad():
+                self.cell_protos.weight.copy_(wc)
 
     def set_prototypes(self, w):
         with torch.no_grad():
@@ -123,13 +142,13 @@ class SwavBase(nn.Module):
 
 class SwAVModel(SwavBase):
     def __init__(
-        self, latent_dim, nmb_prototypes, adata
+        self, latent_dim, nmb_prototypes, adata, multi_layer_proto=False, np2=None
     ):  # , propagation_reg=0.5, prot_emb_sim_reg=0.5
         # self.cell_type_key = "cell_type"
         self.condition_key = "study"
         self.scpoli_ = self.init_scpoli(adata, latent_dim)
         super().__init__(
-            self.scpoli_.model, latent_dim, nmb_prototypes
+            self.scpoli_.model, latent_dim, nmb_prototypes, multi_layer_proto, np2
         )  # , propagation_reg, prot_emb_sim_reg
 
     def init_scpoli(self, adata, latent_dim):

@@ -56,5 +56,8 @@ ABBREVIATIONS = {
     "hard_clustering": "hard",
     "longest_path": "path",
     "n_components": "ncomp",
-    "supervised_ratio": "supervised"
+    "supervised_ratio": "supervised",
+    "multi_layer_protos": "multi-proto",
+    "batch_removal_ratio": 'br',
+    "use_bknn": 'bknn'
 }

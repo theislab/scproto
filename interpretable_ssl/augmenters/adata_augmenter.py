@@ -10,6 +10,8 @@ import random
 
 from torch.utils.data import get_worker_info
 from interpretable_ssl.augmenters.graph_handler import GraphHandler
+import scipy.sparse as sp
+import bbknn
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +30,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         dimensionality_reduction=None,
         n_components=50,
         supervised_ratio=0.1,
+        use_bknn=0,
         **kwargs,
     ):
         """
@@ -63,6 +66,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         self.graph_handler = GraphHandler(original_indicies)
         self.supervised_ratio = supervised_ratio
+        self.use_bknn = use_bknn
         if self.augmentation_type not in ["cell_type", "nb"]:
             self.set_graph()
         super().__init__(adata, **kwargs)
@@ -153,11 +157,36 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         Build the k-nearest neighbors graph using Scanpy.
         """
         logger.info(f"Running Scanpy neighbors with k={self.k_neighbors + 1}.")
-        sc.pp.neighbors(
-            self.adata,
-            n_neighbors=self.k_neighbors + 1,
-            use_rep="X_pca" if self.dimensionality_reduction == "pca" else None,
-        )
+        if self.use_bknn:
+            logger.info('print generating bknn graph')
+            num_batches = self.adata.obs['study'].nunique()
+            neighbors_within_batch = int(self.k_neighbors / num_batches)
+            bbknn.bbknn(self.adata, batch_key='study', neighbors_within_batch=neighbors_within_batch)
+        else:
+            sc.pp.neighbors(
+                self.adata,
+                n_neighbors=self.k_neighbors + 1,
+                use_rep="X_pca" if self.dimensionality_reduction == "pca" else None,
+            )
+            
+        # # Retrieve the adjacency matrix (kNN graph) created by Scanpy
+        # adjacency_matrix = self.adata.obsp["connectivities"]
+        
+        # # Retrieve the study labels
+        # study_labels = self.adata.obs["study"].values  # Replace "study" with the actual column name
+        
+        # # Create a mask to filter edges
+        # row, col = adjacency_matrix.nonzero()  # Get the non-zero indices (edges)
+        # valid_edges = study_labels[row] == study_labels[col]  # True for edges within the same study
+        
+        # # Filter the adjacency matrix
+        # filtered_adj = sp.csr_matrix(
+        #     (adjacency_matrix.data[valid_edges], (row[valid_edges], col[valid_edges])),
+        #     shape=adjacency_matrix.shape,
+        # )
+        
+        # # Replace the original adjacency matrix with the filtered one
+        # self.adata.obsp["connectivities"] = filtered_adj
 
     def _extract_knn_graph_info(self):
         """

@@ -88,20 +88,43 @@ class SwAV(AdoptiveTrainer):
             longest_path=self.longest_path,
             dimensionality_reduction=self.dimensionality_reduction,
             n_components=self.n_components,
-            supervised_ratio = self.supervised_ratio,
+            supervised_ratio=self.supervised_ratio,
+            use_bknn = self.use_bknn,
             condition_keys=[self.condition_key],
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
             conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
             # cell_type_encoder=model.cell_type_encoder,
         )
+        self.train_loader = self.get_data_laoder(self.train_ds)
+        self.original_train_loader = self.train_loader
+        if self.multi_layer_protos == 1:
+            self.cell_type_ds = MultiCropsDataset(
+                self.ref.adata,
+                self.ref.original_idx,
+                self.nmb_crops[0],
+                "cell_type",
+                k_neighbors=self.k_neighbors,
+                longest_path=self.longest_path,
+                dimensionality_reduction=self.dimensionality_reduction,
+                n_components=self.n_components,
+                supervised_ratio=self.supervised_ratio,
+                condition_keys=[self.condition_key],
+                # cell_type_keys=[self.cell_type_key],
+                condition_encoders=scpoli_encoder.condition_encoders,
+                conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
+                # cell_type_encoder=model.cell_type_encoder,
+            )
+            self.cell_type_loader = self.get_data_laoder(self.cell_type_ds)
+            # def get_train_loader(ld1, ld2):
+            #     return zip(ld1, ld2)
 
-        self.train_loader = self.get_data_laoder()
+            # self.train_loader = get_train_loader(self.original_train_loader, self.cell_type_loader)
         logger.info(f"Building data done with {len(self.train_ds)} samples loaded.")
 
-    def get_data_laoder(self):
+    def get_data_laoder(self, ds):
         return DataLoader(
-            self.train_ds,
+            ds,
             batch_size=self.batch_size,
             num_workers=self.workers,
             pin_memory=True,
@@ -117,10 +140,21 @@ class SwAV(AdoptiveTrainer):
         # else:
         if self.decodable_prototypes == 1:
             return SwAVDecodableProto(
-                self.latent_dims, self.num_prototypes, self.ref.adata
+                self.latent_dims,
+                self.num_prototypes,
+                self.ref.adata,
+                self.multi_layer_protos,
+                self.num_prototypes,
             )
         else:
-            return SwAVModel(self.latent_dims, self.num_prototypes, self.ref.adata)
+            # TODO: change 16
+            return SwAVModel(
+                self.latent_dims,
+                self.num_prototypes,
+                self.ref.adata,
+                self.multi_layer_protos,
+                self.num_prototypes,
+            )
 
     def get_model_path(self):
         return os.path.join(self.get_dump_path(), self.get_checkpoint_file())
@@ -165,10 +199,13 @@ class SwAV(AdoptiveTrainer):
         )
 
         warmup_lr_schedule = np.linspace(
-            self.start_warmup, self.base_lr, len(self.train_loader) * self.warmup_epochs
+            self.start_warmup,
+            self.base_lr,
+            len(self.original_train_loader) * self.warmup_epochs,
         )
         iters = np.arange(
-            len(self.train_loader) * (self.pretraining_epochs - self.warmup_epochs)
+            len(self.original_train_loader)
+            * (self.pretraining_epochs - self.warmup_epochs)
         )
         cosine_lr_schedule = np.array(
             [
@@ -181,7 +218,7 @@ class SwAV(AdoptiveTrainer):
                         math.pi
                         * t
                         / (
-                            len(self.train_loader)
+                            len(self.original_train_loader)
                             * (self.pretraining_epochs - self.warmup_epochs)
                         )
                     )
@@ -241,7 +278,7 @@ class SwAV(AdoptiveTrainer):
                 os.path.join(self.dump_path, f"ckp-{epoch}.pth"),
             )
 
-    def log_wandb_loss(self, scores, epoch):
+    def log_wandb_loss(self, scores, epoch, metrics=None):
         (
             _,
             avg_loss,
@@ -268,6 +305,20 @@ class SwAV(AdoptiveTrainer):
         }
         if epoch % 5 == 0:
             log_dict = log_dict | self.calculate_prototype_metrics()
+
+        if metrics is not None:
+            ref, query = metrics
+            metric_dict = {}
+
+            def add_metric(metric_part, part_str):
+                scib_, scgraph_ = metric_part
+                metric_dict[f"{part_str}-scib"] = scib_
+                metric_dict[f"{part_str}-scgraph"] = scgraph_
+
+            add_metric(ref, "ref")
+            add_metric(query, "query")
+            log_dict = log_dict | metric_dict
+
         if not self.debug:
             wandb.log(log_dict)
         else:
@@ -282,15 +333,17 @@ class SwAV(AdoptiveTrainer):
         cudnn.benchmark = True
         if epochs is None:
             epochs = self.pretraining_epochs
-        
+
         self.freeze_conditional_embeddings()
         for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch}============")
 
+            
             if epoch % self.umap_checkpoint_freq == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
-
+                
+            
             if (
                 self.queue_length > 0
                 and epoch >= self.epoch_queue_starts
@@ -303,9 +356,12 @@ class SwAV(AdoptiveTrainer):
                 ).cuda()
 
             scores, self.queue = self.train_one_epoch(epoch)
+            metrics = None
+            if (epoch % self.scib_freq == 0 ) and (self.save_scib == 1):
+                metrics = self.save_metrics(False, False)
             # self.scpoli_.model = self.model.scpoli_model
             # self.training_stats.update(scores)
-            self.log_wandb_loss(scores, epoch)
+            self.log_wandb_loss(scores, epoch, metrics)
             self.save_checkpoint(epoch)
 
         # if self.train_decoder:
@@ -392,7 +448,7 @@ class SwAV(AdoptiveTrainer):
         for embedding_layer in self.model.scpoli_encoder.embeddings:
             for param in embedding_layer.parameters():
                 param.requires_grad = de_freeze
-                
+
     def train_one_epoch(self, epoch):
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -412,7 +468,26 @@ class SwAV(AdoptiveTrainer):
         use_the_queue = False
 
         end = time.time()
-        for iteration, inputs in enumerate(self.train_loader):
+
+        def calc_input_loss(inputs, proto_layer_id=0):
+            bs = inputs["x"].size(0)
+            inputs = self.move_input_on_device(inputs)
+            inputs = reshape_and_reorder_dict(inputs)
+            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
+            if self.multi_layer_protos == 1:
+                scores = scores[proto_layer_id]
+            projector_out = projector_out.detach()
+            swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
+            return swav_loss, prot_decoding_loss, cvae_loss, scores
+
+        if self.multi_layer_protos:
+            train_loader = zip(self.train_loader, self.cell_type_loader)
+        else:
+            train_loader = self.train_loader
+        for iteration, inputs in enumerate(train_loader):
+            if self.multi_layer_protos == 1:
+                inputs, cell_type_inputs = inputs
+
             data_time.update(time.time() - end)
             bs = inputs["x"].size(0)
             self.update_learning_rate(epoch, iteration)
@@ -422,14 +497,18 @@ class SwAV(AdoptiveTrainer):
             with torch.no_grad():
                 self.model.normalize_prototypes()
 
-            inputs = self.move_input_on_device(inputs)
-            inputs = reshape_and_reorder_dict(inputs)
-            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
-            propagation, prot_emb_sim = prot_decoding_loss
+            # inputs = self.move_input_on_device(inputs)
+            # inputs = reshape_and_reorder_dict(inputs)
+            # _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
+            # projector_out = projector_out.detach()
+            # swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
+            swav_loss, prot_decoding_loss, cvae_loss, scores = calc_input_loss(inputs)
+            if self.multi_layer_protos == 1:
+                swav_loss2, _, _, _ = calc_input_loss(cell_type_inputs, 1)
+                swav_loss += self.batch_removal_ratio * swav_loss2
 
-            projector_out = projector_out.detach()
-            swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
             num_match, prob_entropy, p_entropy = self.calculate_pair_matching(scores)
+            propagation, prot_emb_sim = prot_decoding_loss
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
@@ -494,7 +573,7 @@ class SwAV(AdoptiveTrainer):
         ), self.queue
 
     def update_learning_rate(self, epoch, iteration):
-        iteration = epoch * len(self.train_loader) + iteration
+        iteration = epoch * len(self.original_train_loader) + iteration
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = self.lr_schedule[iteration]
 

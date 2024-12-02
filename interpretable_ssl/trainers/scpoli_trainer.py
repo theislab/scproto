@@ -83,7 +83,8 @@ class ScpoliTrainer(Trainer):
         return model
 
     def adapt_ref_model(self, ref_model, adata):
-        query_model = deepcopy(ref_model)
+        query_model = self.get_model() # Create an uninitialized model of the same type
+        query_model.load_state_dict(ref_model.state_dict())
         scpoli_query = scPoli.load_query_data(
             adata=adata,
             reference_model=self.get_scpoli(query_model, False),
@@ -206,25 +207,32 @@ class ScpoliTrainer(Trainer):
     def calculate_other_metrics(self):
         return {}, {}
 
-    def save_metrics(self):
-        ref_other, query_other = self.calculate_other_metrics()
+    def save_metrics(self, save=True, calc_others = True):
+        if calc_others:
+            ref_other, query_other = self.calculate_other_metrics()
+        else:
+            ref_other, query_other = {}, {}
         ref_latent = self.encode_ref(self.model)
-        MetricCalculator(
+        ref_df = MetricCalculator(
             self.ref.adata,
             [ref_latent],
             self.dump_path,
             save_path=self.get_metric_file_path("ref"),
-        ).calculate(ref_other)
+        ).calculate(ref_other, save)
         # calculate_scib_metrics_using_benchmarker(
         #     self.ref.adata, ref_latent, self.get_scib_file_path('ref')
         # )
         query_latent = self.encode_query(self.model)
-        MetricCalculator(
+        query_df = MetricCalculator(
             self.query.adata,
             [query_latent],
             self.dump_path,
             save_path=self.get_metric_file_path("query"),
-        ).calculate(query_other)
+        ).calculate(query_other, save)
+        def get_metrics(df):
+            return df['scib total'].item(), df[['Rank-PCA', 'Corr-PCA', 'Corr-Weighted']].mean(axis=1).iloc[0].item()
+        return get_metrics(ref_df), get_metrics(query_df)
+    
         # calculate_scib_metrics_using_benchmarker(
         #     self.query.adata, query_latent, self.get_scib_file_path('query')
         # )

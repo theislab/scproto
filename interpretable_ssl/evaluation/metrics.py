@@ -156,13 +156,14 @@ class MetricCalculator:
         result = pd.concat([scib_clean, scg_res], axis=1, join="inner")
         return result
 
-    def calculate(self, other_metrics={}):
+    def calculate(self, other_metrics={}, save=True):
         scib_res = self.calculate_scib()
         scgraph_res = self.calculate_scgraph()
         final_res = self.concat_results(scib_res, scgraph_res)
         for key, val in other_metrics.items():
             final_res[key] = val
-        self.save(final_res)
+        if save:
+            self.save(final_res)
         return final_res
 
 

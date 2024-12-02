@@ -51,6 +51,8 @@ def get_defaults():
         "workers": 10,  # swav specific
         "checkpoint_freq": 3,  # swav specific
         "umap_checkpoint_freq": 3,
+        "scib_freq": 10, 
+        "save_scib": 1,
         "use_fp16": False,  # swav specific
         "sync_bn": "pytorch",  # swav specific
         "syncbn_process_group_size": 8,  # swav specific
@@ -91,6 +93,9 @@ def get_defaults():
         "temp_res_path": "temp-res",
         "hard_clustering": 0,
         "n_components": 50,
-        "supervised_ratio": 0.1
+        "supervised_ratio": 0.1,
+        "multi_layer_protos": 0,
+        "batch_removal_ratio": 0.0,
+        "use_bknn": 0
     }
     return defaults
