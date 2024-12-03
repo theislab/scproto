@@ -59,5 +59,8 @@ ABBREVIATIONS = {
     "supervised_ratio": "supervised",
     "multi_layer_protos": "multi-proto",
     "batch_removal_ratio": 'br',
-    "use_bknn": 'bknn'
+    "use_bknn": 'bknn',
+    "freeze_batch_embedding": 'frzbe',
+    "batch_sinkhorn": "bsink",
+    "weighted_batch": "wb"
 }

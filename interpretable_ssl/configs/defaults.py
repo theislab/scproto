@@ -17,8 +17,8 @@ def get_defaults():
         "linear_eval": False,
         "only_eval": False,
         "use_early_stopping": False,        
-        "pretraining_epochs": 500,
-        "fine_tuning_epochs": 500,
+        "pretraining_epochs": 100,
+        "fine_tuning_epochs": 15,
         "cvae_epochs": 0,
         "training_type": 'semi_supervised',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
@@ -96,6 +96,9 @@ def get_defaults():
         "supervised_ratio": 0.1,
         "multi_layer_protos": 0,
         "batch_removal_ratio": 0.0,
-        "use_bknn": 0
+        "use_bknn": 0,
+        "freeze_batch_embedding": 1,
+        "batch_sinkhorn": 0,
+        "weighted_batch": 0,
     }
     return defaults

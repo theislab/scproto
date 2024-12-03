@@ -99,25 +99,6 @@ class ScpoliTrainer(Trainer):
             inputs[key] = inputs[key].to(self.device)
         return inputs
 
-    # def prepare_scpoli_dataloader(self, adata, scpoli_model, shuffle=True):
-
-    #     dataset = MultiConditionAnnotatedDataset(
-    #         adata,
-    #         condition_keys=[self.condition_key],
-    #         # cell_type_keys=[self.cell_type_key],
-    #         condition_encoders=scpoli_model.condition_encoders,
-    #         conditions_combined_encoder=scpoli_model.conditions_combined_encoder,
-    #         # cell_type_encoder=scpoli_model.cell_type_encoder,
-    #     )
-
-    #     loader = DataLoader(
-    #         dataset,
-    #         batch_size=self.batch_size,
-    #         collate_fn=scpoli_utils.custom_collate,
-    #         shuffle=shuffle,
-    #     )
-    #     return loader
-
     def encode_batch(self, model, batch, return_maped=False):
         batch = self.move_input_on_device(batch)
         model.eval()
@@ -156,19 +137,6 @@ class ScpoliTrainer(Trainer):
 
     def get_model_prototypes(self, model):
         return None
-
-    # def calculate_umaps(self, trained_model=True):
-    #     if trained_model:
-    #         model = self.load_model()
-    #     else:
-    #         model = self.get_model()
-    #         model.to("cuda")
-    #     embeddings = self.encode_ref(model)
-    #     prototypes = self.get_model_prototypes(model)
-
-    #     self.embedding_umap, self.prototype_umap = calculate_umap(
-    #         embeddings, prototypes
-    #     )
 
     def get_umap_path(self, data_part="ref"):
         pass
@@ -230,7 +198,7 @@ class ScpoliTrainer(Trainer):
             save_path=self.get_metric_file_path("query"),
         ).calculate(query_other, save)
         def get_metrics(df):
-            return df['scib total'].item(), df[['Rank-PCA', 'Corr-PCA', 'Corr-Weighted']].mean(axis=1).iloc[0].item()
+            return df.loc['latent' ,['Batch correction','Bio conservation', 'scib total']], df[['Rank-PCA', 'Corr-PCA', 'Corr-Weighted']].mean(axis=1).iloc[0].item()
         return get_metrics(ref_df), get_metrics(query_df)
     
         # calculate_scib_metrics_using_benchmarker(

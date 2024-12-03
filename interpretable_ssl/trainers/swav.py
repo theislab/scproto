@@ -37,6 +37,8 @@ import sys
 from interpretable_ssl.utils import log_time
 
 from interpretable_ssl.evaluation.prototype_metrics import *
+import torch
+from collections import Counter, defaultdict
 
 logger = getLogger()
 
@@ -89,7 +91,7 @@ class SwAV(AdoptiveTrainer):
             dimensionality_reduction=self.dimensionality_reduction,
             n_components=self.n_components,
             supervised_ratio=self.supervised_ratio,
-            use_bknn = self.use_bknn,
+            use_bknn=self.use_bknn,
             condition_keys=[self.condition_key],
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
@@ -312,7 +314,10 @@ class SwAV(AdoptiveTrainer):
 
             def add_metric(metric_part, part_str):
                 scib_, scgraph_ = metric_part
-                metric_dict[f"{part_str}-scib"] = scib_
+                batch, bio, total = scib_
+                metric_dict[f"{part_str}-batch"] = batch
+                metric_dict[f"{part_str}-bio"] = bio
+                metric_dict[f"{part_str}-scib"] = total
                 metric_dict[f"{part_str}-scgraph"] = scgraph_
 
             add_metric(ref, "ref")
@@ -334,16 +339,15 @@ class SwAV(AdoptiveTrainer):
         if epochs is None:
             epochs = self.pretraining_epochs
 
-        self.freeze_conditional_embeddings()
+        if self.freeze_batch_embedding:
+            self.freeze_conditional_embeddings()
         for epoch in range(self.start_epoch, epochs):
             logger.info(f"============ Starting epoch {epoch}============")
 
-            
             if epoch % self.umap_checkpoint_freq == 0:
                 # self.plot_ref_umap(name_postfix=f'e{epoch}', model=self.model)
                 self.plot_umap(self.model, self.original_ref.adata, f"ref-e{epoch}")
-                
-            
+
             if (
                 self.queue_length > 0
                 and epoch >= self.epoch_queue_starts
@@ -357,7 +361,7 @@ class SwAV(AdoptiveTrainer):
 
             scores, self.queue = self.train_one_epoch(epoch)
             metrics = None
-            if (epoch % self.scib_freq == 0 ) and (self.save_scib == 1):
+            if (epoch % self.scib_freq == 0) and (self.save_scib == 1):
                 metrics = self.save_metrics(False, False)
             # self.scpoli_.model = self.model.scpoli_model
             # self.training_stats.update(scores)
@@ -389,7 +393,7 @@ class SwAV(AdoptiveTrainer):
     def get_p(self, s):
         return F.softmax(s / self.temperature)
 
-    def calculate_pair_matching(self, scores):
+    def calculate_pair_matching(self, scores, bs):
         def get_hard_cluster(tensor):
             # Find the indices of the maximum values along each row
             max_indices = torch.argmax(tensor, dim=1)
@@ -423,20 +427,22 @@ class SwAV(AdoptiveTrainer):
             return entropy.item()
 
         score_t, score_s = (
-            scores[: self.batch_size],
-            scores[self.batch_size : 2 * self.batch_size],
+            scores[:bs],
+            scores[bs : 2 * bs],
         )
         p_t, p_s = self.get_p(score_t), self.get_p(score_s)
         h_t, h_s = get_hard_cluster(score_t), get_hard_cluster(score_s)
-        c_t, c_s = torch.argmax(h_t, dim=1), torch.argmax(h_s, dim=1)
-        matches = c_t == c_s
+        cluster_labels_t, cluster_labels_s = torch.argmax(h_t, dim=1), torch.argmax(
+            h_s, dim=1
+        )
+        matches = cluster_labels_t == cluster_labels_s
         num_matches = matches.sum().item()
         entropy = calculate_entropy(p_t.sum(0)) + calculate_entropy(p_s.sum(0))
         p_avg_entropy = -torch.sum(
             p_t * torch.log(p_t + 1e-9), dim=1
-        )  # Add small epsilon to avoid log(0)
+        ).mean()  # Add small epsilon to avoid log(0)
 
-        return num_matches, entropy / 2, p_avg_entropy
+        return num_matches, entropy / 2, p_avg_entropy.item()
 
     def freeze_prototypes(self, de_freeze=False):
         for name, param in self.model.named_parameters():
@@ -469,17 +475,6 @@ class SwAV(AdoptiveTrainer):
 
         end = time.time()
 
-        def calc_input_loss(inputs, proto_layer_id=0):
-            bs = inputs["x"].size(0)
-            inputs = self.move_input_on_device(inputs)
-            inputs = reshape_and_reorder_dict(inputs)
-            _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
-            if self.multi_layer_protos == 1:
-                scores = scores[proto_layer_id]
-            projector_out = projector_out.detach()
-            swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
-            return swav_loss, prot_decoding_loss, cvae_loss, scores
-
         if self.multi_layer_protos:
             train_loader = zip(self.train_loader, self.cell_type_loader)
         else:
@@ -488,8 +483,10 @@ class SwAV(AdoptiveTrainer):
             if self.multi_layer_protos == 1:
                 inputs, cell_type_inputs = inputs
 
-            data_time.update(time.time() - end)
             bs = inputs["x"].size(0)
+
+            data_time.update(time.time() - end)
+
             self.update_learning_rate(epoch, iteration)
 
             # move same functionality inside model
@@ -502,13 +499,141 @@ class SwAV(AdoptiveTrainer):
             # _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(inputs)
             # projector_out = projector_out.detach()
             # swav_loss = self.compute_swav_loss(projector_out, scores, bs, use_the_queue)
-            swav_loss, prot_decoding_loss, cvae_loss, scores = calc_input_loss(inputs)
-            if self.multi_layer_protos == 1:
-                swav_loss2, _, _, _ = calc_input_loss(cell_type_inputs, 1)
-                swav_loss += self.batch_removal_ratio * swav_loss2
 
-            num_match, prob_entropy, p_entropy = self.calculate_pair_matching(scores)
-            propagation, prot_emb_sim = prot_decoding_loss
+            def calc_input_loss(inputs, proto_layer_id=0):
+                bs = inputs["x"].size(0)
+                inputs = self.move_input_on_device(inputs)
+                inputs = reshape_and_reorder_dict(inputs)
+                _, projector_out, scores, cvae_loss, prot_decoding_loss = self.model(
+                    inputs
+                )
+                if self.multi_layer_protos == 1:
+                    scores = scores[proto_layer_id]
+                projector_out = projector_out.detach()
+                swav_loss = self.compute_swav_loss(
+                    projector_out, scores, bs, use_the_queue
+                )
+                return swav_loss, prot_decoding_loss, cvae_loss, scores
+
+            def process_inputs(inputs):
+                bs = inputs["x"].size(0)
+                swav_loss, prot_decoding_loss, cvae_loss, scores = calc_input_loss(
+                    inputs
+                )
+                if self.multi_layer_protos == 1:
+                    swav_loss2, _, _, _ = calc_input_loss(cell_type_inputs, 1)
+                    swav_loss += self.batch_removal_ratio * swav_loss2
+
+                num_match, prob_entropy, p_entropy = self.calculate_pair_matching(
+                    scores, bs
+                )
+                propagation, prot_emb_sim = prot_decoding_loss
+                return (
+                    swav_loss,
+                    cvae_loss,
+                    num_match,
+                    prob_entropy,
+                    p_entropy,
+                    propagation,
+                    prot_emb_sim,
+                )
+
+            if self.batch_sinkhorn:
+
+                def split_by_batch(inputs):
+                    # Extract batch labels
+                    batch_labels = inputs["batch"].squeeze(
+                        -1
+                    )  # Shape: [batch_size, aug_cnt]
+
+                    # Determine the majority batch for each sample
+                    batch_majority = [
+                        Counter(batch).most_common(1)[0][0]
+                        for batch in batch_labels.tolist()
+                    ]
+
+                    # Initialize a dictionary to store samples for each majority batch
+                    grouped_indices = defaultdict(list)
+
+                    for i, majority_batch in enumerate(batch_majority):
+                        grouped_indices[majority_batch].append(i)
+
+                    # Create a list of dictionaries for each batch
+                    output_list = []
+
+                    for majority_batch, indices in grouped_indices.items():
+                        batch_dict = {}
+                        for key, value in inputs.items():
+                            if isinstance(value, torch.Tensor):
+                                # Select relevant rows for this batch
+                                batch_dict[key] = value[indices]
+                            else:
+                                # Handle non-tensor data (if applicable)
+                                batch_dict[key] = [value[i] for i in indices]
+                        output_list.append(batch_dict)
+
+                    return output_list
+
+                batch_inputs = split_by_batch(inputs)
+
+                def process_and_average(batch_inputs):
+                    # Dictionary to accumulate metrics and count occurrences
+                    metrics = defaultdict(lambda: {"sum": 0.0, "count": 0})
+
+                    # Process each batch input
+                    for inputs in batch_inputs:
+                        results = process_inputs(inputs)  # Call your function
+                        metric_names = [
+                            "swav_loss",
+                            "cvae_loss",
+                            "num_match",
+                            "prob_entropy",
+                            "p_entropy",
+                            "propagation",
+                            "prot_emb_sim",
+                        ]
+
+                        # Aggregate metrics
+                        for name, value in zip(metric_names, results):
+                            if self.weighted_batch:
+                                value = value * inputs["x"].shape[0]
+                            metrics[name]["sum"] += value
+                            metrics[name]["count"] += inputs["x"].shape[0]
+
+                    # Compute averages
+                    # can try weighted avg on batch size too, but for now not weighted
+                    if self.weighted_batch:
+                        normalize_factor = metrics['swav_loss']["count"]
+                    else:
+                        normalize_factor = len(batch_inputs)
+                        
+                    averaged_metrics = {
+                        name: data["sum"] / normalize_factor
+                        for name, data in metrics.items()
+                    }
+
+                    return averaged_metrics.values()
+
+                (
+                    swav_loss,
+                    cvae_loss,
+                    num_match,
+                    prob_entropy,
+                    p_entropy,
+                    propagation,
+                    prot_emb_sim,
+                ) = process_and_average(batch_inputs)
+
+            else:
+                (
+                    swav_loss,
+                    cvae_loss,
+                    num_match,
+                    prob_entropy,
+                    p_entropy,
+                    propagation,
+                    prot_emb_sim,
+                ) = process_inputs(inputs)
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
