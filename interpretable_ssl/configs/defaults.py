@@ -17,8 +17,8 @@ def get_defaults():
         "linear_eval": False,
         "only_eval": False,
         "use_early_stopping": False,        
-        "pretraining_epochs": 100,
-        "fine_tuning_epochs": 15,
+        "pretraining_epochs": 300,
+        "fine_tuning_epochs": 100,
         "cvae_epochs": 0,
         "training_type": 'semi_supervised',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
@@ -26,7 +26,7 @@ def get_defaults():
         
         "dump_name_version": 4,  # swav specific
         "nmb_crops": [8],  # swav specific
-        "augmentation_type": "community",  # swav specific
+        "augmentation_type": "knn",  # swav specific
         "size_crops": [224],  # swav specific
         "min_scale_crops": [0.14],  # swav specific
         "max_scale_crops": [1],  # swav specific
@@ -75,9 +75,9 @@ def get_defaults():
         ## TODO: to be removed, not used except sbatch template
         "model_version": 1,  # swav specific
         "train_decoder": False,  # swav specific
-        "longest_path": 3,  # swav specific
-        "dimensionality_reduction": None,  # swav specific
-        'k_neighbors': 10,  # swav specific
+        "longest_path": 1,  # swav specific
+        "dimensionality_reduction": 'pca',  # swav specific
+        'k_neighbors': 50,  # swav specific
         'model_type': 'swav',
         'job_name': '',
         'no_data': 'False',
@@ -91,14 +91,15 @@ def get_defaults():
         "decodable_prototypes": 0,
         "save_temp_res": 1,
         "temp_res_path": "temp-res",
-        "hard_clustering": 0,
+        "hard_clustering": 1,
         "n_components": 50,
         "supervised_ratio": 0.1,
         "multi_layer_protos": 0,
         "batch_removal_ratio": 0.0,
         "use_bknn": 0,
-        "freeze_batch_embedding": 1,
+        "freeze_batch_embedding": 0,
         "batch_sinkhorn": 0,
         "weighted_batch": 0,
+        "knn_similarity": 'euclidean'
     }
     return defaults
