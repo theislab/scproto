@@ -49,7 +49,7 @@ class ExperimentRunner:
         self.qos_dict = {
             "gpu_normal": 10,
             "gpu_long": 3,
-            "gpu_short": 2,
+            # "gpu_short": 2,
             # "gpu_priority": 5,
         }
 
@@ -294,514 +294,48 @@ def get_qos_resources(qos):
 
 
 if __name__ == "__main__":
+    print("runner started...")
     runner = ExperimentRunner("swav_template.sbatch")
 
-    #  'scanpy_knn', 'community', 'cell_type'
-
-    items_to_test = [
-        {
-            # "temperature": [0.1, 0.07, 0.05],
-            # 'prot_init': ['kmeans', 'random']
-            "num_prototypes": [16, 100, 200, 300]
-        },
-        # {"training_type": ["semi_supervised", "partial_supervised"],
-        #                 "pretraining_epochs": [250],
-        #                 "fine_tuning_epochs": [250],
-        #                 },
-        {
-            # "temperature": [0.1, 0.07, 0.05],
-            "propagation_reg": [0.1, 0.5, 1, 10],
-        },
-        {
-            "augmentation_type": ["community", "mix"],
-            "propagation_reg": [0, 1],
-        },
-        {
-            "cvae_loss_scaler": [0.001, 0.01, 0.1],
-        },
-        {
-            "temperature": [0.05, 0.03, 0.01, 0.005],
-        },
-        {
-            "prot_emb_sim_reg": [0.1, 0.5, 1, 10],
-        },
-        {"dimensionality_reduction": ["pca", None]},
-    ]
-
-    items_to_test = [
-        {
-            "training_type": ["pretrain_encoder"],
-            "prot_init": ["kmeans"],
-            "latent_dims": [16, 32, 64, 128],
-            #   'fine_tuning_epochs': [100, 500],
-        },
-        {
-            "training_type": ["pretrain_encoder"],
-            "pretraining_epochs": [10],
-            "fine_tuning_epochs": [10],
-            "cvae_loss_scaler": [0.05],
-            "prot_decoding_loss_scaler": [1],
-            "experiment_name": ["test"],
-            "prot_init": ["kmeans"],
-        },
-        {
-            "training_type": ["pretrain_encoder"],
-            "prot_init": ["kmeans"],
-            "cvae_loss_scaler": [0.01, 0.05, 0.1, 0.2],
-            "fine_tuning_epochs": [0, 100],
-        },
-        {
-            "training_type": ["pretrain_encoder"],
-            "prot_init": ["kmeans"],
-            "cvae_loss_scaler": [0.05],
-            "prot_decoding_loss_scaler": [0.5, 1, 2],
-            #   'fine_tuning_epochs': [100, 500],
-        },
-    ]
-    evaluate_job_count(items_to_test)
-
-    test_ = [
-        # {
-        #     "experiment_name": ["debugs"],
-        #     # "temperature": [0.1, 0.07, 0.05],
-        #     # "augmentation_type": ["community"],
-        #     # "training_type": ["semi_supervised"],
-        #     'prot_init': ['kmeans'],
-        #     # 'prot_init': ['kmeans', 'random']
-        #     "cvae_epochs": [6],
-        #     "training_type": ["pretrain_encoder"],
-        #     "pretraining_epochs": [6],
-        #     "fine_tuning_epochs": [6],
-        #     "decodable_prototypes": [1],
-        #     # "experiment_name": [f'test{i}' for i in range(3)]
-        # },
-        {
-            "experiment_name": ["debug-swav5"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            "prot_init": ["kmeans", "random"],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            "experiment_name": ["debug-swav5"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            "prot_init": ["kmeans"],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "epsilon": [0.015, 0.03],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            "experiment_name": ["decode-prot"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            # 'prot_init': ['kmeans']
-            # 'prot_init': ['kmeans', 'random']
-            "cvae_epochs": [100, 300, 500],
-            "training_type": ["pretrain_encoder"],
-            "pretraining_epochs": [0],
-            "fine_tuning_epochs": [0],
-            "decodable_prototypes": [1],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            "experiment_name": ["decode-prot"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            # 'prot_init': ['kmeans']
-            # 'prot_init': ['kmeans', 'random']
-            "cvae_epochs": [100],
-            "training_type": ["pretrain_encoder"],
-            "pretraining_epochs": [100],
-            "fine_tuning_epochs": [100],
-            "decodable_prototypes": [1],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            "experiment_name": ["debug-swav5"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            # 'prot_init': ['kmeans', 'random'],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "sinkhorn_iterations": [5, 10, 15],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            # "experiment_name": ["debug-swav5"],
-            # "temperature": [0.1, 0.07, 0.05],
-            # "augmentation_type": ["community"],
-            # "training_type": ["semi_supervised"],
-            # 'prot_init': ['kmeans', 'random'],
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "freeze_prototypes_nepochs": [15, 100],
-            "decodable_prototypes": [1],
-            # "experiment_name": [f'test{i}' for i in range(3)]
-        },
-        {
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "batch_size": [1024, 2048],
-        },
-        {
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            "prot_init": ["kmeans"],
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "freeze_prototypes_nepochs": [100],
-        },
-        {
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            "prot_init": ["kmeans"],
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "freeze_prototypes_nepochs": [100],
-            "decodable_prototypes": [1],
-            "cvae_loss_scaler": [0.001, 0.01, 0.05],
-        },
-        {
-            "umap_checkpoint_freq": [2],
-            "checkpoint_freq": [2],
-            # 'prot_init': ['kmeans', 'random']
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "batch_size": [2048 * 2, 2048 * 4],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            "freeze_prototypes_nepochs": [100],
-            "num_prototypes": [16, 30, 50, 100],
-            "training_type": ["pretrain"],
-            "pretraining_epochs": [500],
-            "batch_size": [2048],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            "freeze_prototypes_nepochs": [100],
-            "training_type": ["pretrain"],
-            "cvae_loss_scaler": [0.001, 0.01, 0.05],
-            "batch_size": [2048],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            "freeze_prototypes_nepochs": [300, 500],
-            "training_type": ["pretrain"],
-            "batch_size": [2048, 512],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            # "freeze_prototypes_nepochs": [300, 500],
-            "training_type": ["pretrain"],
-            "batch_size": [512, 1024],
-            "loss_type": ["kl2"],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            # "freeze_prototypes_nepochs": [300, 500],
-            "training_type": ["pretrain"],
-            "batch_size": [512, 1024],
-            "hard_clustering": [1],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            # "freeze_prototypes_nepochs": [300, 500],
-            "training_type": ["pretrain"],
-            "batch_size": [512, 1024],
-            "k_neighbors": [20, 50, 100],
-        },
-        {
-            "umap_checkpoint_freq": [3],
-            "checkpoint_freq": [3],
-            # "freeze_prototypes_nepochs": [300, 500],
-            "training_type": ["semi_supervised"],
-            "batch_size": [1024],
-            "k_neighbors": [10, 50],
-            "loss_type": ["kl2", "cross_entropy"],
-            "hard_clustering": [0, 1],
-            "pretraining_epochs": [250],
-            "fine_tuning_epochs": [250],
-            "cvae_loss_scaler": [0.0, 0.01],
-        },
-    ]
-
+    experiment_name = ["new_seacell"]
     seacell = [
-        #     {"experiment_name": ["seacell"],
-        #    "dimensionality_reduction": ["pca"],
-        #    "k_neighbors": [50],
-        #    "augmentation_type": ["knn"],
-        #    "pretraining_epochs": [100],
-        #    "fine_tuning_epochs": [100],
-        #    "hard_clustering": [1],
-        #    "longest_path": [1, 2, 3],
-        #    "latent_dims": [8, 16]
-        #    },
-        # mix aug
         {
-            "experiment_name": ["seacell"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["mix"],
-            "pretraining_epochs": [500],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "supervised_ratio": [0.1, 0.2, 0.3, 0.5],
-            "training_type": ["pretrain"],
-            "longest_path": [1],
+            "cvae_loss_scaler": [0.0, 0.001, 0.01, 0.1],
         },
-        # cvae loss
+        {"training_type": ["pretrain_encoder"], "cvae_epochs": [100, 300]},
+        {"num_prototypes": [100, 200, 500]},
+        {"k_neighbors": [10, 100]},
+        {"n_components": [25, 100, 500]},
+        {"hard_clustering": [0]},
+        {"freeze_batch_embedding": [1]},
+        {"batch_size": [1024, 2048, 2048 * 2]},
         {
-            "experiment_name": ["seacell"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "fine_tuning_epochs": [100],
-            "hard_clustering": [1],
-            "cvae_loss_scaler": [0.0, 0.01, 0.05],
-            "longest_path": [1],
+            "knn_similarity": ["cosine"],
         },
-        # soft clustering
+        {"experiment_name": ["prop_reg_finetune"]},
         {
-            "experiment_name": ["seacell"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "fine_tuning_epochs": [100],
-            "longest_path": [1],
-        },
-        # cvae pretrain
-        {
-            "experiment_name": ["seacell"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "fine_tuning_epochs": [100],
-            "hard_clustering": [1],
-            "cvae_epochs": [100, 200],
-            "cvae_loss_scaler": [0.0, 0.01],
-            "training_type": ["pretrain_encoder"],
-            "longest_path": [1],
-        },
-        # freeze conditional embeddings
-        {
-            "experiment_name": ["freeze-ce"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            #    "fine_tuning_epochs": [100],
-            "hard_clustering": [1, 0],
-            "cvae_epochs": [100],
-            "training_type": ["pretrain_encoder"],
-            "longest_path": [1],
-        },
-        # multi layer proto
-        {
-            "experiment_name": ["multi-debug2"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "training_type": ["pretrain"],
-            "multi_layer_protos": [1],
-            "batch_removal_ratio": [0.0, 0.1, 0.5, 1],
-        },
-        {
-            "experiment_name": ["test-cell-layer"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "training_type": ["pretrain"],
-            "multi_layer_protos": [1],
-            #    "batch_removal_ratio": [0.0, 0.1, 0.5, 1]
-        },
-        # batch-graph
-        # multi-knn
-        {
-            "experiment_name": ["multi-knn"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            "multi_layer_protos": [1],
-            "cvae_epochs": [100],
-            "batch_removal_ratio": [1],
-        },
-        # less proto
-        {
-            "experiment_name": ["less-proto"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            #    "multi_layer_protos": [1],
-            "cvae_epochs": [100],
-            "num_prototypes": [16, 32, 100],
-            #    "batch_removal_ratio": [1]
-        },
-        # with cvae loss
-        {
-            "experiment_name": ["cvae-loss"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "hard_clustering": [1],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            "multi_layer_protos": [1],
-            "cvae_epochs": [100],
-            "batch_removal_ratio": [1],
-            "cvae_loss_scaler": [0.01, 0.05, 0.5, 1],
-        },
-        # soft clustering
-        # same number of protos for each layer
-        {
-            "experiment_name": ["same-proto"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            "fine_tuning_epochs": [100],
-            "multi_layer_protos": [1],
-            "cvae_epochs": [100],
-            "batch_removal_ratio": [1],
-            "cvae_loss_scaler": [0.0, 0.01, 0.05],
-            "hard_clustering": [0,1]
-        },
-        {
-            "experiment_name": ["same-proto"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            "fine_tuning_epochs": [100],
+            "experiment_name": ["marker-seacell"],
+            "training_type": ["semi_supervised"],
             
-            "cvae_epochs": [100],
-            
-            "cvae_loss_scaler": [0.0, 0.01, 0.05],
-            "hard_clustering": [0,1]
-        },
-        {
-            "experiment_name": ["bknn"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50, 30],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [100],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder"],
-            "fine_tuning_epochs": [10],
-            
-            "cvae_epochs": [10],
-            
-            
-            "hard_clustering": [1],
-            "use_bknn": [1, 0]
-        },
-        {
-            "experiment_name": ["batch-sinkhorn"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder", 'semi_supervised'],
-            "cvae_epochs": [10],
-            "hard_clustering": [1],
+            "cvae_loss_scaler": [0.001, 0.01],
             "batch_sinkhorn": [1],
-            "weighted_batch": [1, 0]
-            # "use_bknn": [1],
-            # "freeze_prototypes_nepochs": [0, 10],
-            # "freeze_batch_embedding": [0]
+            "weighted_batch": [0,1],
+            'propagation_reg': [1, 2, 5]
+            # "epsilon": [0.03, 0.05],
+            # "temperature": [0.1]
         },
-        {
-            "experiment_name": ["sanity"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder", "semi_supervised"],
-            "cvae_epochs": [10],
-            "hard_clustering": [1],
-            # "use_bknn": [1],
-            # "freeze_prototypes_nepochs": [0, 10],
-            # "freeze_batch_embedding": [0]
-        },
-        {
-            "experiment_name": ["batch-sinkhorn"],
-            "dimensionality_reduction": ["pca"],
-            "k_neighbors": [50],
-            "augmentation_type": ["knn"],
-            "pretraining_epochs": [200],
-            "longest_path": [1],
-            "training_type": ["pretrain_encoder", 'semi_supervised'],
-            "cvae_epochs": [10],
-            "hard_clustering": [1],
-            "batch_sinkhorn": [1],
-            "batch_size": [1024, 2048]
-        }
     ]
-
-    for item_to_test in seacell[-2:]:
+    batch_sinkhorn = [True, False]
+    evaluate_job_count(seacell)
+    for item_to_test in seacell[-1:]:
         # Run all experiments
-        # if 'pretraining_epochs' not in item_to_test:
-        #     item_to_test['experiment_name'] = ['1000e']
-        # if 'num_prototypes' not in item_to_test:
-        #     item_to_test['num_prototypes'] = [16]
-        # item_to_test['prot_init'] = ['random']
+        # for bsi in batch_sinkhorn:
+        #     if bsi:
+        #         item_to_test['batch_sinkhorn'] = [1]
+        #         item_to_test["experiment_name"] = ['bsink']
+        #         item_to_test["weighted_batch"] = [0,1]
+        #     else:
+        #         item_to_test["experiment_name"] = experiment_name
+        #         item_to_test['batch_sinkhorn'] = [0]
+        #         item_to_test["weighted_batch"] = [0]
         runner.run_multiple_experiments(item_to_test, True)
-# squeue -u fatemehs.hashemig -o "%.18i %.9P %.50j %.8u %.8T %.10M %.9l %.6D %R" | grep swav | awk '{print $1}' | xargs scancel

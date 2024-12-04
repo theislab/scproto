@@ -24,4 +24,4 @@ python main.py swav --num_prototypes {num_prototypes} --latent_dims {latent_dims
 --loss_type {loss_type} --hard_clustering {hard_clustering} \
 --n_components {n_components} --longest_path {longest_path} --supervised_ratio {supervised_ratio} --multi_layer_protos {multi_layer_protos} \
 --batch_removal_ratio {batch_removal_ratio} --use_bknn {use_bknn} --freeze_batch_embedding {freeze_batch_embedding} \
---batch_sinkhorn {batch_sinkhorn} --weighted_batch {weighted_batch}
+--batch_sinkhorn {batch_sinkhorn} --weighted_batch {weighted_batch} --knn_similarity {knn_similarity}

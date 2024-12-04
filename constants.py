@@ -62,5 +62,6 @@ ABBREVIATIONS = {
     "use_bknn": 'bknn',
     "freeze_batch_embedding": 'frzbe',
     "batch_sinkhorn": "bsink",
-    "weighted_batch": "wb"
+    "weighted_batch": "wb",
+    "knn_similarity": 'knnsim'
 }

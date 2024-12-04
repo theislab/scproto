@@ -31,6 +31,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         n_components=50,
         supervised_ratio=0.1,
         use_bknn=0,
+        knn_similarity='euclidean',
         **kwargs,
     ):
         """
@@ -67,6 +68,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.graph_handler = GraphHandler(original_indicies)
         self.supervised_ratio = supervised_ratio
         self.use_bknn = use_bknn
+        self.knn_similarity = knn_similarity
         if self.augmentation_type not in ["cell_type", "nb"]:
             self.set_graph()
         super().__init__(adata, **kwargs)
@@ -166,6 +168,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             sc.pp.neighbors(
                 self.adata,
                 n_neighbors=self.k_neighbors + 1,
+                metric=self.knn_similarity,
+                # method='faiss',
                 use_rep="X_pca" if self.dimensionality_reduction == "pca" else None,
             )
             

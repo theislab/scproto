@@ -93,6 +93,7 @@ class SwAV(AdoptiveTrainer):
             supervised_ratio=self.supervised_ratio,
             use_bknn=self.use_bknn,
             condition_keys=[self.condition_key],
+            knn_similarity=self.knn_similarity,
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
             conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
@@ -634,11 +635,15 @@ class SwAV(AdoptiveTrainer):
                     propagation,
                     prot_emb_sim,
                 ) = process_inputs(inputs)
+            prop_reg = self.propagation_reg
+            # if self.finetuning:
+            #     prop_reg = 5
+            
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
                 # + prot_decoding_loss * self.prot_decoding_loss_scaler
-                + propagation * self.propagation_reg
+                + propagation * prop_reg
                 + prot_emb_sim * self.prot_emb_sim_reg
             )
             self.optimizer.zero_grad()
