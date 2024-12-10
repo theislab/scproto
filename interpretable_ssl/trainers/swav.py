@@ -39,6 +39,7 @@ from interpretable_ssl.utils import log_time
 from interpretable_ssl.evaluation.prototype_metrics import *
 import torch
 from collections import Counter, defaultdict
+from interpretable_ssl.evaluation.cd4_marker import *
 
 logger = getLogger()
 
@@ -94,6 +95,8 @@ class SwAV(AdoptiveTrainer):
             use_bknn=self.use_bknn,
             condition_keys=[self.condition_key],
             knn_similarity=self.knn_similarity,
+            ds_name=str(self.ref),
+            save_dir='./graphs',
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
             conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
@@ -604,10 +607,10 @@ class SwAV(AdoptiveTrainer):
                     # Compute averages
                     # can try weighted avg on batch size too, but for now not weighted
                     if self.weighted_batch:
-                        normalize_factor = metrics['swav_loss']["count"]
+                        normalize_factor = metrics["swav_loss"]["count"]
                     else:
                         normalize_factor = len(batch_inputs)
-                        
+
                     averaged_metrics = {
                         name: data["sum"] / normalize_factor
                         for name, data in metrics.items()
@@ -638,7 +641,7 @@ class SwAV(AdoptiveTrainer):
             prop_reg = self.propagation_reg
             # if self.finetuning:
             #     prop_reg = 5
-            
+
             loss = (
                 swav_loss
                 + cvae_loss * self.cvae_loss_scaler
@@ -979,6 +982,25 @@ class SwAV(AdoptiveTrainer):
             min_cell_cnt = adata.obs.cell_type.value_counts().min()
             max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
         self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
+
+    def plot_marker_genes(self, single_cell=False):
+        def nk_markers(adata):
+            return plot_marker_gene_expressions(
+                adata, ["CD8+ T cells", "NK cells"], x_gene="TYROBP"
+            )
+        if single_cell:
+            p1 = plot_marker_gene_expressions(self.ref.adata)
+            p2 = nk_markers(self.ref.adata)
+        else:
+            similarity = self.encode_adata(self.ref.adata, self.model, True)
+            prot_df = assign_prototype_labels(self.ref.adata, similarity)
+            x = self.model.decode_and_average()
+            prot_adata = generate_proto_adata(
+                x, prot_df["prototype_label"].values, self.ref.adata.var.index.tolist()
+            )
+            p1 = plot_marker_gene_expressions(prot_adata)
+            p2 = nk_markers(prot_adata)
+        return p1, p2
 
 
 if __name__ == "__main__":

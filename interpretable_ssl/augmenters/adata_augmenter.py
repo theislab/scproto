@@ -12,6 +12,9 @@ from torch.utils.data import get_worker_info
 from interpretable_ssl.augmenters.graph_handler import GraphHandler
 import scipy.sparse as sp
 import bbknn
+import faiss
+import os
+import pickle as pkl
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +34,10 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         n_components=50,
         supervised_ratio=0.1,
         use_bknn=0,
-        knn_similarity='euclidean',
+        knn_similarity="cosine",
+        knn_method="faiss",
+        ds_name="hlca",
+        save_dir=None,
         **kwargs,
     ):
         """
@@ -69,6 +75,15 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.supervised_ratio = supervised_ratio
         self.use_bknn = use_bknn
         self.knn_similarity = knn_similarity
+        self.knn_method = knn_method
+        self.save_dir = save_dir
+        
+        self.graph_name = (
+            f"graph_{ds_name}{len(adata)}_pca{self.n_components}_knn{self.k_neighbors}.pkl"
+        )
+        
+        os.makedirs(self.save_dir , exist_ok=True)
+        self.save_path = os.path.join(save_dir, self.graph_name)
         if self.augmentation_type not in ["cell_type", "nb"]:
             self.set_graph()
         super().__init__(adata, **kwargs)
@@ -101,7 +116,10 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def build_knn_graph(self):
         logger.info(f"building knn graph")
-        graph = self.build_scanpy_knn_graph()
+        if self.knn_method == "faiss":
+            graph = self.build_knn_graph_with_faiss()
+        else:
+            graph = self.build_scanpy_knn_graph()
         return graph
 
     def _build_knn_graph_with_sklearn(self, indices=None):
@@ -154,16 +172,55 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 f"PCA completed. Shape of data after PCA: {self.adata.obsm['X_pca'].shape}"
             )
 
+    def build_knn_graph_with_faiss(self):
+        """
+        Build the k-nearest neighbors graph using FAISS and return indices and distances.
+        """
+        logger.info(f"Running FAISS neighbors with k={self.k_neighbors}.")
+        self._apply_pca_if_needed()
+        # Extract PCA or representation for the kNN graph
+        if self.dimensionality_reduction == "pca":
+            data = self.adata.obsm["X_pca"]
+        else:
+            data = (
+                self.adata.X.toarray()
+                if hasattr(self.adata.X, "toarray")
+                else self.adata.X
+            )
+
+        # Initialize the FAISS index
+        logger.info("Initializing FAISS index.")
+        faiss_index = faiss.IndexFlatL2(data.shape[1])
+        faiss_index.add(data)
+
+        # Perform the kNN search
+        logger.info("Performing kNN search with FAISS.")
+        distances, indices = faiss_index.search(data, self.k_neighbors + 1)
+
+        # Exclude the self-loop (first column corresponds to the point itself)
+        distances = distances[:, 1:]
+        indices = indices[:, 1:]
+
+        logger.info(
+            f"kNN graph generated with FAISS. Indices shape: {indices.shape}, Distances shape: {distances.shape}."
+        )
+
+        return indices, distances
+
     def _build_knn_graph_with_scanpy(self):
         """
         Build the k-nearest neighbors graph using Scanpy.
         """
         logger.info(f"Running Scanpy neighbors with k={self.k_neighbors + 1}.")
         if self.use_bknn:
-            logger.info('print generating bknn graph')
-            num_batches = self.adata.obs['study'].nunique()
+            logger.info("print generating bknn graph")
+            num_batches = self.adata.obs["study"].nunique()
             neighbors_within_batch = int(self.k_neighbors / num_batches)
-            bbknn.bbknn(self.adata, batch_key='study', neighbors_within_batch=neighbors_within_batch)
+            bbknn.bbknn(
+                self.adata,
+                batch_key="study",
+                neighbors_within_batch=neighbors_within_batch,
+            )
         else:
             sc.pp.neighbors(
                 self.adata,
@@ -172,23 +229,23 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 # method='faiss',
                 use_rep="X_pca" if self.dimensionality_reduction == "pca" else None,
             )
-            
+
         # # Retrieve the adjacency matrix (kNN graph) created by Scanpy
         # adjacency_matrix = self.adata.obsp["connectivities"]
-        
+
         # # Retrieve the study labels
         # study_labels = self.adata.obs["study"].values  # Replace "study" with the actual column name
-        
+
         # # Create a mask to filter edges
         # row, col = adjacency_matrix.nonzero()  # Get the non-zero indices (edges)
         # valid_edges = study_labels[row] == study_labels[col]  # True for edges within the same study
-        
+
         # # Filter the adjacency matrix
         # filtered_adj = sp.csr_matrix(
         #     (adjacency_matrix.data[valid_edges], (row[valid_edges], col[valid_edges])),
         #     shape=adjacency_matrix.shape,
         # )
-        
+
         # # Replace the original adjacency matrix with the filtered one
         # self.adata.obsp["connectivities"] = filtered_adj
 
@@ -270,7 +327,10 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def set_graph(self):
         if self.knn_graph is None:
-            self.knn_graph = self.build_knn_graph()
+            self.knn_graph = self.load_graph()
+            if self.knn_graph is None:
+                self.knn_graph = self.build_knn_graph()
+                self.save_graph()
 
     def knn_augment(self, index):
         self.set_graph()
@@ -432,6 +492,14 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 )
 
         return combined_data
+
+    def save_graph(self):
+        pkl.dump(self.knn_graph, open(self.save_path, "wb"))
+
+    def load_graph(self):
+        if os.path.exists(self.save_path):
+            return pkl.load(open(self.save_path, 'rb'))
+        return None
 
 
 def reshape_and_reorder_dict(data_dict):
