@@ -47,8 +47,8 @@ class ExperimentRunner:
         }
         self.original_defaults = self.defaults.copy()
         self.qos_dict = {
-            "gpu_normal": 10,
-            "gpu_long": 3,
+            "gpu_normal": 15,
+            "gpu_long": 7,
             # "gpu_short": 2,
             # "gpu_priority": 5,
         }
@@ -296,46 +296,38 @@ def get_qos_resources(qos):
 if __name__ == "__main__":
     print("runner started...")
     runner = ExperimentRunner("swav_template.sbatch")
-
-    experiment_name = ["new_seacell"]
     seacell = [
         {
-            "cvae_loss_scaler": [0.0, 0.001, 0.01, 0.1],
+            "experiment_name": ["dim"],
+            "dimensionality_reduction": ["scvi", "pca"],
+            "batch_sinkhorn": [0, 1],
         },
-        {"training_type": ["pretrain_encoder"], "cvae_epochs": [100, 300]},
-        {"num_prototypes": [100, 200, 500]},
-        {"k_neighbors": [10, 100]},
-        {"n_components": [25, 100, 500]},
-        {"hard_clustering": [0]},
-        {"freeze_batch_embedding": [1]},
-        {"batch_size": [1024, 2048, 2048 * 2]},
+        {"batch_sinkhorn": [1], "weighted_batch": [0, 1]},
+        {"propagation_reg": [0.5, 1, 5],
+         "batch_sinkhorn": [1, 0]},
+        {"prot_emb_sim_reg": [0.5, 1, 5],
+         "batch_sinkhorn": [1, 0]},
+        {"cvae_loss_scaler": [0.0001, 0.001, 0.01],
+         "batch_sinkhorn": [1, 0],},
         {
-            "knn_similarity": ["cosine"],
+            "experiment_name": ["all-loss"],
+            "cvae_loss_scaler": [0.001],
+            "prot_emb_sim_reg": [1],
+            "propagation_reg": [5],
+            "batch_sinkhorn": [0, 1],
+            "dimensionality_reduction": ["scvi", "pca"],
         },
-        {"experiment_name": ["prop_reg_finetune"]},
         {
-            "experiment_name": ["marker-seacell"],
-            "training_type": ["semi_supervised"],
-            
+            "experiment_name": ["conclusion"],
             "cvae_loss_scaler": [0.001, 0.01],
+            "prot_emb_sim_reg": [1],
             "batch_sinkhorn": [1],
-            "weighted_batch": [0,1],
-            'propagation_reg': [1, 2, 5]
-            # "epsilon": [0.03, 0.05],
-            # "temperature": [0.1]
+            "weighted_batch": [0, 1],
+            "dimensionality_reduction": ["pca"],
         },
+        
+        
     ]
-    batch_sinkhorn = [True, False]
     evaluate_job_count(seacell)
-    for item_to_test in seacell[-1:]:
-        # Run all experiments
-        # for bsi in batch_sinkhorn:
-        #     if bsi:
-        #         item_to_test['batch_sinkhorn'] = [1]
-        #         item_to_test["experiment_name"] = ['bsink']
-        #         item_to_test["weighted_batch"] = [0,1]
-        #     else:
-        #         item_to_test["experiment_name"] = experiment_name
-        #         item_to_test['batch_sinkhorn'] = [0]
-        #         item_to_test["weighted_batch"] = [0]
+    for item_to_test in seacell:
         runner.run_multiple_experiments(item_to_test, True)
