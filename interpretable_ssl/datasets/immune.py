@@ -13,7 +13,7 @@ class ImmuneDataset(SingleCellDataset):
         super().__init__("pbmc-immune", adata, get_label_encoder_path(), original_idx)
 
     def get_data_path(self):
-        return Path.home() / "data/scpoli/pbmc-immune-processed.h5ad"
+        return Path.home() / "data/scpoli/pbmc_marker.h5ad"
 
     def get_test_studies(self):
         return ["Freytag", "Villani"]

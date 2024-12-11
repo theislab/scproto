@@ -15,6 +15,7 @@ import bbknn
 import faiss
 import os
 import pickle as pkl
+import scvi
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -77,12 +78,10 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.knn_similarity = knn_similarity
         self.knn_method = knn_method
         self.save_dir = save_dir
-        
-        self.graph_name = (
-            f"graph_{ds_name}{len(adata)}_pca{self.n_components}_knn{self.k_neighbors}.pkl"
-        )
-        
-        os.makedirs(self.save_dir , exist_ok=True)
+
+        self.graph_name = f"graph_{ds_name}{len(adata)}_{self.dimensionality_reduction}{self.n_components}_knn{self.k_neighbors}.pkl"
+
+        os.makedirs(self.save_dir, exist_ok=True)
         self.save_path = os.path.join(save_dir, self.graph_name)
         if self.augmentation_type not in ["cell_type", "nb"]:
             self.set_graph()
@@ -157,7 +156,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         return indices, distances
 
-    def _apply_pca_if_needed(self):
+    def _apply_dimensionality_reduction_if_needed(self):
         """
         Apply PCA to the data if dimensionality reduction is set to 'pca'.
         """
@@ -171,16 +170,34 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             logger.debug(
                 f"PCA completed. Shape of data after PCA: {self.adata.obsm['X_pca'].shape}"
             )
+        if self.dimensionality_reduction == "scvi":
+            self._apply_scvi()
+
+    def _apply_scvi(self):
+        # Setup AnnData for scVI
+        scvi.model.SCVI.setup_anndata(self.adata)
+
+        # Initialize the scVI model with the desired number of latent dimensions
+        model = scvi.model.SCVI(self.adata, n_latent=self.n_components)
+        model.train()
+        # Extract the latent representation (dimensionality reduction)
+        latent_representation = model.get_latent_representation()
+
+        # Save the reduced dimensions into the AnnData object
+        self.adata.obsm["X_scvi"] = latent_representation
+
+    def need_dim_reduction(self):
+        return self.dimensionality_reduction in ["pca", "scvi"]
 
     def build_knn_graph_with_faiss(self):
         """
         Build the k-nearest neighbors graph using FAISS and return indices and distances.
         """
         logger.info(f"Running FAISS neighbors with k={self.k_neighbors}.")
-        self._apply_pca_if_needed()
+        self._apply_dimensionality_reduction_if_needed()
         # Extract PCA or representation for the kNN graph
-        if self.dimensionality_reduction == "pca":
-            data = self.adata.obsm["X_pca"]
+        if self.need_dim_reduction():
+            data = self.adata.obsm[f"X_{self.dimensionality_reduction}"]
         else:
             data = (
                 self.adata.X.toarray()
@@ -227,7 +244,11 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 n_neighbors=self.k_neighbors + 1,
                 metric=self.knn_similarity,
                 # method='faiss',
-                use_rep="X_pca" if self.dimensionality_reduction == "pca" else None,
+                use_rep=(
+                    f"X_{self.dimensionality_reduction}"
+                    if self.need_dim_reduction()
+                    else None
+                ),
             )
 
         # # Retrieve the adjacency matrix (kNN graph) created by Scanpy
@@ -285,7 +306,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         to match the output of build_knn_graph, with the option to apply PCA.
         """
         logger.info("Starting to build k-nearest neighbors graph using Scanpy.")
-        self._apply_pca_if_needed()
+        self._apply_dimensionality_reduction_if_needed()
         self._build_knn_graph_with_scanpy()
         return self._extract_knn_graph_info()
 
@@ -295,7 +316,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         and assign community labels to the cells.
         """
         logger.info("Starting to build community graph.")
-        self._apply_pca_if_needed()
+        self._apply_dimensionality_reduction_if_needed()
         self._build_knn_graph_with_scanpy()
 
         logger.info("Performing Leiden community detection.")
@@ -498,7 +519,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
     def load_graph(self):
         if os.path.exists(self.save_path):
-            return pkl.load(open(self.save_path, 'rb'))
+            return pkl.load(open(self.save_path, "rb"))
         return None
 
 
