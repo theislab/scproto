@@ -69,7 +69,7 @@ class ScpoliTrainer(Trainer):
         return parser
 
     def load_model(self):
-        model = self.get_model(self.ref.adata)
+        model = self.get_model()
         path = self.get_model_path()
         model.load_state_dict(torch.load(path)["model_state_dict"])
         return model

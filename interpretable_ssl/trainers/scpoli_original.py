@@ -19,13 +19,17 @@ class OriginalTrainer(AdoptiveTrainer):
     ):
         self.is_swav = 0
         super().__init__(debug, dataset, ref_query, parser, **kwargs)
+        print('input data size: ', len(self.ref))
+        self.model = self.get_model()
         # if not self.debug:
         #     self.init_wandb()
         # self.experiment_name = "original-scpoli"
         # self.model_name_version = 2
         # self.create_dump_path()
 
-    def get_model(self, adata):
+    def get_model(self):
+        
+        adata = self.ref.adata
         if self.training_type == 'pretrain':
             cell_type_key = None
         else:
@@ -40,11 +44,8 @@ class OriginalTrainer(AdoptiveTrainer):
             recon_loss="nb",
         )
 
-    def train(self, pretrain=True, finetune=True, model=None):
-
-        if model is None:
-            model = self.get_model(self.ref.adata)
-
+    def train(self, pretrain=True, finetune=True):
+        
         if pretrain and finetune:
             epochs = self.fine_tuning_epochs + self.pretraining_epochs
 
@@ -56,14 +57,14 @@ class OriginalTrainer(AdoptiveTrainer):
             epochs = self.fine_tuning_epochs
             pretraining_epochs = 0
 
-        model.train(
+        self.model.train(
             n_epochs=epochs,
             pretraining_epochs=pretraining_epochs,
             eta=5,
         )
         model_path = self.get_model_path()
         utils.save_model_checkpoint(
-            model.model,
+            self.model.model,
             epochs,
             model_path,
         )
@@ -91,11 +92,20 @@ class OriginalTrainer(AdoptiveTrainer):
                 return f'{self.experiment_name}_training-{self.training_type}'
 
     def load_model(self):
-        model = self.get_model(self.ref.adata)
+        model = self.get_model()
         path = self.get_model_path()
         model.model.load_state_dict(torch.load(path)["model_state_dict"])
         return model
-
+    
+    def adapt_ref_model(self, ref_model, adata):
+        query_model = self.get_model()
+        query_model.model.load_state_dict(ref_model.model.state_dict())
+        return scPoli.load_query_data(
+            adata=adata,
+            reference_model=query_model.model,
+            labeled_indices=[],
+        )
+    
     def load_query_model(self, adata=None):
         if adata is None:
             adata = self.query.adata
@@ -122,7 +132,7 @@ class OriginalTrainer(AdoptiveTrainer):
     def get_query_model_latent(self, model, adata):
         return model.get_latent(adata, mean=True)
 
-    def encode_batch(self, model, batch):
+    def encode_batch(self,  model, batch, return_maped=False):
         batch = self.move_input_on_device(batch)
         scpoli_model = self.get_scpoli(model)
         scpoli_model.to(self.device)
@@ -155,7 +165,7 @@ class OriginalTrainer(AdoptiveTrainer):
         self.dataset = self.get_dataset(self.finetune_dataset_id)
         self.ref, self.query = self.dataset.get_train_test()
         model = self.load_query_model(self.ref)
-        self.train(pretrain=False, finetune=True, model=model)
+        self.train(pretrain=False, finetune=True)
 
     def train_fully_supervised(self):
         self.finetuning = True
