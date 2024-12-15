@@ -21,6 +21,7 @@ class OriginalTrainer(AdoptiveTrainer):
         super().__init__(debug, dataset, ref_query, parser, **kwargs)
         print('input data size: ', len(self.ref))
         self.model = self.get_model()
+        print('hi')
         # if not self.debug:
         #     self.init_wandb()
         # self.experiment_name = "original-scpoli"
@@ -102,7 +103,7 @@ class OriginalTrainer(AdoptiveTrainer):
         query_model.model.load_state_dict(ref_model.model.state_dict())
         return scPoli.load_query_data(
             adata=adata,
-            reference_model=query_model.model,
+            reference_model=query_model,
             labeled_indices=[],
         )
     
