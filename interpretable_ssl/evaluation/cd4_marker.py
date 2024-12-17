@@ -93,6 +93,7 @@ import pandas as pd
 from collections import Counter
 import anndata
 
+
 def assign_prototype_labels(adata, similarity_tensor, cell_type_column="cell_type"):
     """
     Assigns each sample in AnnData to the prototype with the highest similarity,

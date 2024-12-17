@@ -245,12 +245,15 @@ def plot_umap(
 
 from scipy.stats import gaussian_kde
 
+import matplotlib.colors as mcolors
+
 
 def plot_3umaps(
     cell_umap,
     prototype_umap,
     cell_types,
     study_labels,
+    prototype_labels=None,
     save_plot=True,
     save_path_list=None,
 ):
@@ -261,6 +264,7 @@ def plot_3umaps(
         labels=None,
         label_title=None,
         prototypes=None,
+        prototype_labels=None,
         exclude_prototypes=False,
         color_by_density=False,
     ):
@@ -281,6 +285,7 @@ def plot_3umaps(
         else:
             unique_labels = np.unique(labels)
             unique_colors = plt.cm.get_cmap("tab20", len(unique_labels))
+
             colors = ListedColormap(
                 unique_colors(np.linspace(0, 1, len(unique_labels)))
             )
@@ -296,17 +301,43 @@ def plot_3umaps(
                     s=20,
                 )
 
-        if prototypes is not None and not exclude_prototypes:
-            ax.scatter(
-                prototypes[:, 0],
-                prototypes[:, 1],
-                color="white",
-                edgecolor="black",
-                s=100,
-                marker="o",
-                label="Prototypes",
-            )
+                if prototypes is not None and not exclude_prototypes:
+                    prototype_indices = [
+                        idx for idx, lbl in enumerate(prototype_labels) if lbl == label
+                    ]
+                    if prototype_indices:
 
+                        ax.scatter(
+                            prototypes[prototype_indices, 0],
+                            prototypes[prototype_indices, 1],
+                            color=colors(i),
+                            edgecolor="black",
+                            linewidth=0.5,
+                            s=70,
+                            zorder=2,
+                            alpha=0.8,
+                            # label="Prototypes",
+                        )
+
+            # Plot prototypes with labels not in cell types
+            if prototypes is not None:
+                extra_indices = [
+                    idx
+                    for idx, lbl in enumerate(prototype_labels)
+                    if lbl not in unique_labels
+                ]
+                if extra_indices:
+                    ax.scatter(
+                        prototypes[extra_indices, 0],
+                        prototypes[extra_indices, 1],
+                        color="white",  # Use a distinct color for extra prototypes
+                        edgecolor="black",
+                        linewidth=0.5,
+                        s=70,
+                        zorder=3,
+                        alpha=0.9,
+                        label="Extra Prototypes",  # Add a legend for extra prototypes
+                    )
         if label_title:
             ax.set_title(f"UMAP of Cell Embeddings with {label_title} Highlighted")
         ax.set_xlabel("UMAP Dimension 1")
@@ -331,8 +362,11 @@ def plot_3umaps(
     axes[0].set_title("UMAP of Cell Embeddings Colored by Density")
 
     # Plot cell embeddings colored by cell types (with prototypes)
-    plot_scatter(axes[1], cell_umap, cell_types, "Cell Types", prototype_umap)
-    add_legend(fig, axes[1], "Cell Types", (0.50, -0.1))
+    plot_scatter(
+        axes[1], cell_umap, cell_types, "Cell Types", prototype_umap, prototype_labels
+    )
+    if np.unique(cell_types).shape[0] < 50:
+        add_legend(fig, axes[1], "Cell Types", (0.50, -0.1))
 
     # Plot cell embeddings colored by studies (without prototypes)
     plot_scatter(axes[2], cell_umap, study_labels, "Studies", exclude_prototypes=True)
@@ -341,6 +375,164 @@ def plot_3umaps(
     plt.tight_layout(rect=[0, 0.2, 1, 1])
 
     if save_path_list is not None:
+        for save_path in save_path_list:
+            fig.savefig(
+                save_path, bbox_inches="tight", pad_inches=0.5
+            )  # Increase pad_inches as needed
+
+    return fig
+
+
+def plot_3umaps2(
+    cell_umap,
+    prototype_umap,
+    cell_types,
+    study_labels,
+    proto_labels,
+    proto_confidence=None,
+    save_plot=True,
+    save_path_list=None,
+    proto_size_base=100,
+):
+
+    def plot_scatter(
+        ax,
+        data_umap,
+        labels=None,
+        label_title=None,
+        prototypes=None,
+        proto_labels=None,
+        proto_confidence=None,
+        exclude_prototypes=False,
+        color_by_density=False,
+        label_to_color_idx=None,
+        shared_colors=None,
+    ):
+        if color_by_density:
+            # Calculate point density
+            xy = np.vstack([data_umap[:, 0], data_umap[:, 1]])
+            density = gaussian_kde(xy)(xy)
+            scatter = ax.scatter(
+                data_umap[:, 0],
+                data_umap[:, 1],
+                c=density,
+                cmap="viridis",
+                s=20,
+                alpha=0.6,
+            )
+            cbar = plt.colorbar(scatter, ax=ax, pad=0.01)
+            cbar.set_label("Density")
+        else:
+            for label, idx in label_to_color_idx.items():
+                indices = np.where(np.array(labels) == label)[0]
+                ax.scatter(
+                    data_umap[indices, 0],
+                    data_umap[indices, 1],
+                    label=label,
+                    color=shared_colors(idx),
+                    alpha=0.6,
+                    s=20,
+                )
+
+        # Visualize prototypes
+        if prototypes is not None and not exclude_prototypes:
+            visualize_prototypes(
+                ax,
+                prototypes,
+                proto_labels,
+                proto_confidence,
+                proto_size_base,
+                label_to_color_idx,
+                shared_colors,
+            )
+
+        if label_title:
+            ax.set_title(f"UMAP of Cell Embeddings with {label_title} Highlighted")
+        ax.set_xlabel("UMAP Dimension 1")
+        ax.set_ylabel("UMAP Dimension 2")
+
+    def visualize_prototypes(
+        ax,
+        prototypes,
+        proto_labels,
+        proto_confidence,
+        proto_size_base,
+        label_to_color_idx,
+        shared_colors,
+    ):
+        """
+        Visualizes prototypes on the UMAP plot.
+        - Prototypes are colored by their labels and sized by confidence.
+        """
+        if proto_confidence is None:
+            proto_confidence = np.ones(prototypes.shape[0])  # Default confidence
+
+        for label, idx in label_to_color_idx.items():
+            indices = np.where(np.array(proto_labels) == label)[0]
+            ax.scatter(
+                prototypes[indices, 0],
+                prototypes[indices, 1],
+                color=shared_colors(idx),
+                edgecolor="k",
+                linewidth=0.5,
+                s=proto_size_base
+                * proto_confidence[indices],  # Scale size by confidence
+                alpha=0.8,
+                label=f"Prototype: {label}",
+            )
+
+    def add_legend(fig, ax, title, bbox_anchor):
+        handles, labels = ax.get_legend_handles_labels()
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=bbox_anchor,
+            ncol=3,
+            title=title,
+        )
+
+    # Combine cell types and prototype labels for a shared colormap
+    all_labels = np.unique(np.concatenate([cell_types, proto_labels]))
+    label_to_color_idx = {label: idx for idx, label in enumerate(all_labels)}
+    shared_colors = plt.cm.get_cmap("tab20", len(all_labels))
+
+    # Determine the number of subplots
+    fig, axes = plt.subplots(1, 3, figsize=(30, 10))
+
+    # Plot cell embeddings colored by density (without prototypes)
+    plot_scatter(axes[0], cell_umap, color_by_density=True)
+    axes[0].set_title("UMAP of Cell Embeddings Colored by Density")
+
+    # Plot cell embeddings colored by cell types (with prototypes)
+    plot_scatter(
+        axes[1],
+        cell_umap,
+        cell_types,
+        "Cell Types",
+        prototypes=prototype_umap,
+        proto_labels=proto_labels,
+        proto_confidence=proto_confidence,
+        label_to_color_idx=label_to_color_idx,
+        shared_colors=shared_colors,
+    )
+    add_legend(fig, axes[1], "Cell Types", (0.50, -0.1))
+
+    # Plot cell embeddings colored by studies (without prototypes)
+    plot_scatter(
+        axes[2],
+        cell_umap,
+        study_labels,
+        "Studies",
+        exclude_prototypes=True,
+        label_to_color_idx=label_to_color_idx,
+        shared_colors=shared_colors,
+    )
+    add_legend(fig, axes[2], "Studies", (0.85, -0.1))
+
+    plt.tight_layout(rect=[0, 0.2, 1, 1])
+
+    if save_plot and save_path_list is not None:
         for save_path in save_path_list:
             fig.savefig(
                 save_path, bbox_inches="tight", pad_inches=0.5

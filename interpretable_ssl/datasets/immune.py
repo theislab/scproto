@@ -1,7 +1,5 @@
 from interpretable_ssl.datasets.dataset import SingleCellDataset
 from pathlib import Path
-import pickle as pkl
-from copy import deepcopy
 
 
 def get_label_encoder_path():

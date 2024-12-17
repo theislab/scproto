@@ -82,23 +82,22 @@ class SwavBase(nn.Module):
         else:
             return x, x, self.prototypes(x), cvae_loss, prot_decoding_loss
 
-    def get_proto_avg_distances(self, z, dim):
+    def propagation(self, z: torch.Tensor):
         cosine_sim = self.prototypes(z)
         cosine_dist = 1 - cosine_sim
 
         # Find the minimum distance (closest prototype) for each sample
-        min_distances = cosine_dist.min(dim=dim).values
+        min_distances = cosine_dist.min(dim=1).values
 
-        # Return the average of these minimum distances
-        return min_distances.mean()
-
-    def propagation(self, z: torch.Tensor):
-        return self.get_proto_avg_distances(z, 0)
-        # dist = torch.cdist(z, self.prototypes.weight)
-        # return dist.min(1).values.mean()
+        # Return the max of these minimum distances
+        return min_distances.max()
 
     def embedding_similarity(self, z: torch.Tensor):
-        return self.get_proto_avg_distances(z, 1)
+        cosine_sim = self.prototypes(z)
+        cosine_dist = 1 - cosine_sim
+
+        min_distances = cosine_dist.min(dim=0).values
+        return min_distances.max()
         # dist = torch.cdist(self.prototypes.weight, z)
         # return dist.min(1).values.mean()
         # Convert cosine similarity to cosine distance
@@ -186,12 +185,7 @@ class SwavBase(nn.Module):
         # Stack all embeddings into a single tensor
         return torch.vstack(embeddings_list)
 
-    def reconstruct(
-        self,
-        decoder_outputs,
-        mean_size_factor,
-        batch,
-    ):
+    def reconstruct_nb(self, decoder_outputs, mean_size_factor, batch):
         """
         Reconstruct gene expression data using a default size factor and batch.
 
@@ -244,7 +238,12 @@ class SwavBase(nn.Module):
 
         return reconstructed_data
 
-    def decode_and_average(self):
+    def reconstruct_mse(self, outputs):
+        recon_x, y1 = outputs
+        reconstructed_input = torch.exp(recon_x) - 1
+        return reconstructed_input
+
+    def decode_and_average(self, recon_loss="nb"):
         """
         Decode the input tensor with all possible batch embeddings, then average the results.
         Args:
@@ -269,8 +268,11 @@ class SwavBase(nn.Module):
             output = self.scpoli_encoder.decoder(
                 input_tensor, batch_embedding_repeated
             )  # Define decoder logic
-            size_factor = 520.0436341421945
-            decoded = self.reconstruct(output, size_factor, i)
+            if recon_loss == "nb":
+                size_factor = 520.0436341421945
+                decoded = self.reconstruct_nb(output, size_factor, i)
+            else:
+                decoded = self.reconstruct_mse(output)
 
             decoded_results.append(decoded)
 
@@ -280,22 +282,28 @@ class SwavBase(nn.Module):
 
 class SwAVModel(SwavBase):
     def __init__(
-        self, latent_dim, nmb_prototypes, adata, multi_layer_proto=False, np2=None
+        self,
+        latent_dim,
+        nmb_prototypes,
+        adata,
+        multi_layer_proto=False,
+        np2=None,
+        recon_loss="nb",
     ):  # , propagation_reg=0.5, prot_emb_sim_reg=0.5
         # self.cell_type_key = "cell_type"
         self.condition_key = "study"
-        self.scpoli_ = self.init_scpoli(adata, latent_dim)
+        self.scpoli_ = self.init_scpoli(adata, latent_dim, recon_loss)
         super().__init__(
             self.scpoli_.model, latent_dim, nmb_prototypes, multi_layer_proto, np2
         )  # , propagation_reg, prot_emb_sim_reg
 
-    def init_scpoli(self, adata, latent_dim):
+    def init_scpoli(self, adata, latent_dim, recon_loss="nb"):
         return scPoli(
             adata=adata,
             condition_keys=self.condition_key,
             # cell_type_keys=self.cell_type_key,
             latent_dim=latent_dim,
-            recon_loss="nb",
+            recon_loss=recon_loss,
         )
 
 

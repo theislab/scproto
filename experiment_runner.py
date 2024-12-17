@@ -39,6 +39,7 @@ class ExperimentRunner:
                 # "cvae_loss_scaler": 0.0,
                 # "prot_decoding_loss_scaler": 0,
                 "model_version": 1,
+                "model": "swav",
             }
         )
         self.defaults["experiment_name"] = "swav"
@@ -48,7 +49,7 @@ class ExperimentRunner:
         self.original_defaults = self.defaults.copy()
         self.qos_dict = {
             "gpu_normal": 15,
-            "gpu_long": 7,
+            "gpu_long": 8,
             # "gpu_short": 2,
             # "gpu_priority": 5,
         }
@@ -129,6 +130,11 @@ class ExperimentRunner:
 
         print(f"Submitted job: {job_name}")
 
+    def set_experiment_name(self, params):
+        model = params.get("model", self.original_defaults.get("model"))
+        if params.get("experiment_name") is None:
+            params["experiment_name"] = model
+
     def run_multiple_experiments(self, item_to_test, submit=False):
         """Run or save multiple experiments by varying parameters according to the item_to_test."""
         keys, values = zip(*item_to_test.items())
@@ -137,6 +143,7 @@ class ExperimentRunner:
             params = dict(zip(keys, value_combination))
 
             # Generate job name automatically based on differences from defaults
+            self.set_experiment_name(params)
             job_name = self.generate_job_name(params)
             current_jobs = get_slurm_job_names()
             if job_name in current_jobs:
@@ -297,36 +304,25 @@ if __name__ == "__main__":
     print("runner started...")
     runner = ExperimentRunner("swav_template.sbatch")
     seacell = [
+        # {"propagation_reg": [1], 'prot_emb_sim_reg':[1]},
+        # {"propagation_reg": [1, 5, 10]},
+        # {"num_prototypes": [16, 20, 30]},
+        # {"propagation_reg": [1], "weighted_batch": [0, 1]},
         {
-            "experiment_name": ["dim"],
-            "dimensionality_reduction": ["scvi", "pca"],
-            "batch_sinkhorn": [0, 1],
-        },
-        {"batch_sinkhorn": [1], "weighted_batch": [0, 1]},
-        {"propagation_reg": [0.5, 1, 5],
-         "batch_sinkhorn": [1, 0]},
-        {"prot_emb_sim_reg": [0.5, 1, 5],
-         "batch_sinkhorn": [1, 0]},
-        {"cvae_loss_scaler": [0.0001, 0.001, 0.01],
-         "batch_sinkhorn": [1, 0],},
-        {
-            "experiment_name": ["all-loss"],
-            "cvae_loss_scaler": [0.001],
-            "prot_emb_sim_reg": [1],
-            "propagation_reg": [5],
-            "batch_sinkhorn": [0, 1],
-            "dimensionality_reduction": ["scvi", "pca"],
+            "dataset_id": ["hlca", 'pancreas'],
+            "model": ['scpoli'],
+            "training_type": ['fully_supervised', 'pretrain'],
+            "batch_size": [256, 512, 2048]
         },
         {
-            "experiment_name": ["conclusion"],
-            "cvae_loss_scaler": [0.001, 0.01],
-            "prot_emb_sim_reg": [1],
-            "batch_sinkhorn": [1],
-            "weighted_batch": [0, 1],
-            "dimensionality_reduction": ["pca"],
+            "dataset_id": ["hlca"],
+            "propagation_reg": [1],
+            "num_prototypes": [5000],
+            "batch_size": [256, 512, 2048]
         },
-        
-        
+        {'dimensionality_reduction': ['scvi'], 'batch_sinkhorn': [0,1]},
+        {'dimensionality_reduction': ['scvi'], "propagation_reg": [1, 3, 5]},
+        {'dimensionality_reduction': ['scvi'], "prot_emb_sim_reg": [1, 3, 5]}
     ]
     evaluate_job_count(seacell)
     for item_to_test in seacell:

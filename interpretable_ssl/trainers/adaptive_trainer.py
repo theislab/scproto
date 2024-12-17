@@ -140,7 +140,9 @@ class AdoptiveTrainer(ScpoliTrainer):
         self.ref = self.original_ref
         # self.plot_ref_umap(name_postfix="with-model_all", model=self.model)
         # self.plot_ref_umap(name_postfix="load-adopt_all", model=self.load_adopt())
-        self.plot_ref_umap(name_postfix="all", model=self.model)
+        # self.plot_ref_umap(name_postfix="all", model=self.model)
+        model = self.adapt_ref_model(self.model, self.dataset.adata)
+        self.plot_umap(model, self.dataset.adata, 'all', True)
         self.plot_query_umap()
         self.additional_plots()
         # moved to the end of train function so we have scib metrics for both pretrain and finetuned version

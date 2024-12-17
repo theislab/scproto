@@ -16,6 +16,7 @@ from interpretable_ssl.trainers.base import TrainerBase
 from interpretable_ssl.evaluation.metric_generator import *
 from interpretable_ssl.datasets.immune import *
 
+
 class ExperimentEvaluator(ExperimentRunner):
     def __init__(self, dataset, **kwargs):
         super().__init__(**kwargs)
@@ -24,68 +25,18 @@ class ExperimentEvaluator(ExperimentRunner):
             self.ref_query = self.dataset.get_train_test()
         else:
             self.ref_query = None
-            
+
         self.trainers = []
 
     def create_trainer(self, params, model_type):
-        params['debug'] = True
-        params['dataset'] = self.dataset
-        params['ref_query'] = self.ref_query
+        params["debug"] = True
+        params["dataset"] = self.dataset
+        params["ref_query"] = self.ref_query
         """Create a trainer instance based on the model type and parameters."""
+        if params.get("experiment_name") is None:
+            params["experiment_name"] = model_type
         if model_type == "swav":
             trainer = SwAV(**params)
-                # nmb_crops=params.get("nmb_crops", self.original_defaults["nmb_crops"]),
-                # is_swav=1,
-                # num_prototypes=params.get(
-                #     "num_prototypes", self.original_defaults["num_prototypes"]
-                # ),
-                # latent_dims=params.get(
-                #     "latent_dims", self.original_defaults["latent_dims"]
-                # ),
-                # batch_size=params.get(
-                #     "batch_size", self.original_defaults["batch_size"]
-                # ),
-                # augmentation_type=params.get(
-                #     "augmentation_type", self.original_defaults["augmentation_type"]
-                # ),
-                # epsilon=params.get("epsilon", self.original_defaults["epsilon"]),
-                # cvae_loss_scaler=params.get(
-                #     "cvae_loss_scaler", self.original_defaults["cvae_loss_scaler"]
-                # ),
-                # prot_decoding_loss_scaler=params.get(
-                #     "prot_decoding_loss_scaler",
-                #     self.original_defaults["prot_decoding_loss_scaler"],
-                # ),
-                # model_version=params.get(
-                #     "model_version", self.original_defaults["model_version"]
-                # ),
-                # experiment_name=params.get(
-                #     "experiment_name", self.original_defaults["experiment_name"]
-                # ),
-                # k_neighbors=params.get(
-                #     "k_neighbors", self.original_defaults["k_neighbors"]
-                # ),
-                # dimensionality_reduction=params.get(
-                #     "dimensionality_reduction",
-                #     self.original_defaults["dimensionality_reduction"],
-                # ),
-                # training_type=params.get(
-                #     "training_type", self.original_defaults["training_type"]
-                # ),
-                # dataset_id=params.get(
-                #     "dataset_id", self.original_defaults["dataset_id"]
-                # ),
-                # dataset=self.dataset,
-                # ref_query=self.ref_query,
-                # debug=params.get("debug", True),  # Assuming debug=True is a default,
-                # # no_data='True',
-                # model_name_version=params.get(
-                #     "model_name_version", self.original_defaults["model_name_version"]
-                # ),
-                # temperature=params.get(
-                #     "temperature", self.original_defaults["temperature"]
-                # ),
-            # )
         elif model_type == "scpoli":
             trainer = OriginalTrainer(**params)
             #     latent_dims=params.get(
@@ -116,10 +67,7 @@ class ExperimentEvaluator(ExperimentRunner):
 
     def generate_job_name(self, params, model_type):
         job_name = super().generate_job_name(params)
-        if model_type == 'scpoli':
-            return model_type + "_" + job_name
-        else:
-            return job_name
+        return job_name
 
     def generate_trainers(self, item_list):
         """Generate a list of trainer instances based on the parameter grid."""
@@ -165,16 +113,13 @@ class ExperimentEvaluator(ExperimentRunner):
         return all_trainers
 
     def evaluate_results(self, item_list, semi_supervised=True):
-        trainers = self.generate_trainers(item_list)
-        for trainer in trainers:
-            if trainer.name[-4:] == "scpo":
-                trainer.name = trainer.name[-4:] + trainer.experiment_name
-
         
-        if semi_supervised:
-            for trainer in trainers:
-                if trainer.fine_tuning_epochs!=0:
-                    trainer.finetuning = True
+        trainers = self.generate_trainers(item_list)
+        for t in trainers:
+            print(t.name)
+        # for trainer in trainers:
+        #     if trainer.name[-4:] == "scpo":
+        #         trainer.name = trainer.name[-4:] + trainer.experiment_name
 
         def filter_trainers(inp_trainers):
             def model_exist(trainer):
@@ -184,17 +129,42 @@ class ExperimentEvaluator(ExperimentRunner):
 
             return [trainer for trainer in inp_trainers if model_exist(trainer)]
 
-        valid_trainers = filter_trainers(trainers)
-        self.trainers = valid_trainers
-        print(f"all trainers: {len(trainers)}, valid trainers: {len(valid_trainers)}")
-        # invalid_trainers = set(trainers) - set(valid_trainers)
-        # for trainer in invalid_trainers:
-        #     print
-        dfs = [MetricGenerator(t).generate_metrics() for t in valid_trainers]
+        def get_results(finetuned=True):
+            if semi_supervised:
+                for trainer in trainers:
+                    if "scpoli" in trainer.name:
+                        continue
+                    if trainer.fine_tuning_epochs != 0:
+                        trainer.finetuning = finetuned
+                    if not finetuned:
+                        trainer.name += "_pretrained"
+
+            if not finetuned:
+                selected_trainers = [t for t in trainers if "scpoli" not in t.name]
+            else:
+                selected_trainers = trainers
+
+            valid_trainers = filter_trainers(selected_trainers)
+            self.trainers = valid_trainers
+            print(
+                f"all trainers: {len(trainers)}, valid trainers: {len(valid_trainers)}"
+            )
+            # invalid_trainers = set(trainers) - set(valid_trainers)
+            # for trainer in invalid_trainers:
+            #     print
+            dfs = [MetricGenerator(t).generate_metrics() for t in valid_trainers]
+            print("dfs size:", len(dfs))
+            return dfs
+
+        finetuned_dfs = get_results()
+        pretrained_dfs = get_results(False)
+        dfs = finetuned_dfs + pretrained_dfs
 
         res = pd.concat(dfs, axis=0)[
             [
                 "scib total",
+                "Batch correction",
+                "Bio conservation",
                 "knn f1 macro",
                 "knn f1 micro",
                 "knn f1 weighted",
@@ -207,7 +177,7 @@ class ExperimentEvaluator(ExperimentRunner):
             ]
         ]
         df = res.round(5).drop_duplicates()
-        df.index = [idx.replace('_aug_comm', '') if 'scpoli' in idx else idx for idx in df.index]
+        # df.index = [idx.replace('_aug_comm', '') if 'scpoli' in idx else idx for idx in df.index]
 
         scpoli_df = df[df.index.str.contains("scpoli")]
         threshold = scpoli_df["scib total"].max()

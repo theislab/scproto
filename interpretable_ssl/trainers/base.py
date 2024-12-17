@@ -22,10 +22,10 @@ class TrainerBase:
 
         # Assign each default value to an instance variable
         for key, value in defaults.items():
-
             setattr(self, key, value)
-        if self.is_swav == 1:
-            self.set_experiment_name()
+        
+        
+        self.set_experiment_name()
         self.params = self.__dict__.copy()
         self.create_dump_path()
         self.create_temp_res_path()
@@ -91,26 +91,6 @@ class TrainerBase:
         self.experiment_name = f"{self.experiment_name }_iloss{self.prot_decoding_loss_scaler}_closs{self.cvae_loss_scaler}"
 
     def generate_name_based_on_changes(self):
-        # # Get the default values from the function
-        # defaults = get_defaults()
-
-        # # Create a list to hold parts of the name based on changed fields
-        # name_parts = [self.model_type]
-
-        # # Iterate over the instance's attributes and compare them with the defaults
-        # for key, default_value in defaults.items():
-
-        #     current_value = getattr(self, key, None)
-
-        #     # Check if the current value is different from the default
-        #     if current_value != default_value:
-        #         # Add the key and current value to the name parts
-        #         name_parts.append(f"{key}-{current_value}")
-
-        # # Join all parts with underscores to form the final name
-        # name = "_".join(name_parts)
-
-        # return name
         return generate_model_name(get_defaults().copy(), self.params)
 
     def get_model_name(self):

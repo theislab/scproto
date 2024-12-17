@@ -1,12 +1,12 @@
 def get_defaults():
     defaults = {
         "dataset_id": "pbmc-immune",
-        "model_name_version": 6,
+        "model_name_version": 7,
         "num_prototypes": 300,  # swav specific or 8, 128
         "hidden_dim": 64,
         "latent_dims": 8,  # swav specific
         # "batch_size_version": 2,
-        "batch_size": 512,
+        "batch_size": 1024,
         
         # "custom_cross_val": False,
         # "description": "",
@@ -17,10 +17,10 @@ def get_defaults():
         "linear_eval": False,
         "only_eval": False,
         "use_early_stopping": False,        
-        "pretraining_epochs": 300,
+        "pretraining_epochs": 200,
         "fine_tuning_epochs": 100,
         "cvae_epochs": 0,
-        "training_type": 'semi_supervised',  # semi_supervised, transfer_learning
+        "training_type": 'pretrain',  # semi_supervised, transfer_learning
         'pretrain_dataset_id': 'hlca',
         'finetune_dataset_id': 'pbmc-immune',
         
@@ -65,7 +65,7 @@ def get_defaults():
         "training_stats": "",  # swav specific
         "device": "cuda",  # swav specific
         
-        "cvae_loss_scaler": 0.0,  # swav specific, 0.0001
+        
         
         ## TODO: replaced by 2 new reg, to be removed
         "prot_decoding_loss_scaler": 0.0,  # swav specific, 5
@@ -75,7 +75,7 @@ def get_defaults():
         ## TODO: to be removed, not used except sbatch template
         "model_version": 1,  # swav specific
         "train_decoder": False,  # swav specific
-        "longest_path": 1,  # swav specific
+        "longest_path": 1,  # swav specific, maybe 5 would be cool
         "dimensionality_reduction": 'pca',  # swav specific
         'k_neighbors': 50,  # swav specific
         'model_type': 'swav',
@@ -85,6 +85,7 @@ def get_defaults():
         "freeze_prototypes_niters": 0,  # swav specific
         "freeze_prototypes_nepochs": 0,
         "prot_init": 'random', #can be kmeans
+        "cvae_loss_scaler": 0.01,  # swav specific, 0.0001
         "propagation_reg": 0.0,
         "prot_emb_sim_reg": 0.0,
         "loss_type": 'cross_entropy',
@@ -98,8 +99,9 @@ def get_defaults():
         "batch_removal_ratio": 0.0,
         "use_bknn": 0,
         "freeze_batch_embedding": 0,
-        "batch_sinkhorn": 0,
+        "batch_sinkhorn": 1,
         "weighted_batch": 0,
-        "knn_similarity": 'euclidean'
+        "knn_similarity": 'cosine',
+        "recon_loss": 'mse'
     }
     return defaults

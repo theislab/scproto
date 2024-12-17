@@ -19,34 +19,44 @@ class OriginalTrainer(AdoptiveTrainer):
     ):
         self.is_swav = 0
         super().__init__(debug, dataset, ref_query, parser, **kwargs)
-        print('input data size: ', len(self.ref))
+        print("input data size: ", len(self.ref))
         self.model = self.get_model()
-        print('hi')
+        
         # if not self.debug:
         #     self.init_wandb()
         # self.experiment_name = "original-scpoli"
         # self.model_name_version = 2
         # self.create_dump_path()
 
-    def get_model(self):
+    def set_experiment_name(self):
+        if self.model_name_version < 7:
+            return super().set_experiment_name()
         
+        if self.experiment_name is not None:
+            if self.experiment_name != "":
+                return
+        else:
+            self.experiment_name = "scpoli"
+
+    def get_model(self):
+
         adata = self.ref.adata
-        if self.training_type == 'pretrain':
+        if self.training_type == "pretrain":
             cell_type_key = None
         else:
             cell_type_key = "cell_type"
         condition_key = "study"
-        
+
         return scPoli(
             adata=adata,
             condition_keys=condition_key,
             cell_type_keys=cell_type_key,
             latent_dim=self.latent_dims,
-            recon_loss="nb",
+            recon_loss=self.recon_loss,
         )
 
     def train(self, pretrain=True, finetune=True):
-        
+
         if pretrain and finetune:
             epochs = self.fine_tuning_epochs + self.pretraining_epochs
 
@@ -82,22 +92,22 @@ class OriginalTrainer(AdoptiveTrainer):
             return self.append_batch(name)
         # elif self.model_name_version < 5:
         #     return super().get_model_name()
-        else:
+        elif self.model_name_version < 7:
             if self.experiment_name is None:
                 self.experiment_name = "scpoli"
             if self.model_name_version < 5:
-                return (
-                    f"{self.experiment_name}_latent{self.latent_dims}_bs{self.batch_size}"
-                )
+                return f"{self.experiment_name}_latent{self.latent_dims}_bs{self.batch_size}"
             else:
-                return f'{self.experiment_name}_training-{self.training_type}'
+                return f"{self.experiment_name}_training-{self.training_type}"
+        else:
+            return super().get_model_name()
 
     def load_model(self):
         model = self.get_model()
         path = self.get_model_path()
         model.model.load_state_dict(torch.load(path)["model_state_dict"])
         return model
-    
+
     def adapt_ref_model(self, ref_model, adata):
         query_model = self.get_model()
         query_model.model.load_state_dict(ref_model.model.state_dict())
@@ -106,7 +116,7 @@ class OriginalTrainer(AdoptiveTrainer):
             reference_model=query_model,
             labeled_indices=[],
         )
-    
+
     def load_query_model(self, adata=None):
         if adata is None:
             adata = self.query.adata
@@ -133,7 +143,7 @@ class OriginalTrainer(AdoptiveTrainer):
     def get_query_model_latent(self, model, adata):
         return model.get_latent(adata, mean=True)
 
-    def encode_batch(self,  model, batch, return_maped=False):
+    def encode_batch(self, model, batch, return_maped=False):
         batch = self.move_input_on_device(batch)
         scpoli_model = self.get_scpoli(model)
         scpoli_model.to(self.device)

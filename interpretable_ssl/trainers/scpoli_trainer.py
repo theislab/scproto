@@ -12,7 +12,7 @@ from tqdm import tqdm
 from interpretable_ssl.evaluation.metrics import MetricCalculator
 from torch.utils.data import DataLoader
 from interpretable_ssl.utils import log_time
-
+from interpretable_ssl.evaluation.cd4_marker import assign_prototype_labels
 
 class ScpoliTrainer(Trainer):
     # @log_time('scpoli trainer')
@@ -146,11 +146,14 @@ class ScpoliTrainer(Trainer):
         prototypes = self.get_model_prototypes(model)
         latent_umap, prototype_umap = calculate_umap(latent, prototypes)
         obs = adata.obs
+        similarity = self.encode_adata(adata, model, True)
+        proto_df = assign_prototype_labels(adata, similarity)
         return plot_3umaps(
             latent_umap,
             prototype_umap,
             obs.cell_type,
             obs.study,
+            proto_df.prototype_label,
             save_plot,
             self.get_umap_path(split),
         )

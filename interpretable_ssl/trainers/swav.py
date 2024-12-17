@@ -160,6 +160,7 @@ class SwAV(AdoptiveTrainer):
                 self.ref.adata,
                 self.multi_layer_protos,
                 self.num_prototypes,
+                recon_loss=self.recon_loss,
             )
 
     def get_model_path(self):

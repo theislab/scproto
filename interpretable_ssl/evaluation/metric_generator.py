@@ -6,8 +6,10 @@ from interpretable_ssl.evaluation.metrics import MetricCalculator
 class MetricGenerator:
     def __init__(self, trainer) -> None:
         self.trainer = trainer
-        self.all_metric_file = "all-semi-query-metrics.csv"
-
+        if trainer.finetuning:
+            self.all_metric_file = "all-semi-query-metrics.csv"
+        else:
+            self.all_metric_file = "all-pretrained-query-metrics.csv"
         self.all_metric_path = os.path.join(
             self.trainer.get_dump_path(), self.all_metric_file
         )
@@ -71,7 +73,9 @@ class MetricGenerator:
 
     def load_all_metrics(self):
         if os.path.exists(self.all_metric_path):
-            return pd.read_csv(self.all_metric_path, index_col=0)
+            df = pd.read_csv(self.all_metric_path, index_col=0)
+            df.index = [self.trainer.name]
+            return df
         return None
 
     def generate_metrics(self):
