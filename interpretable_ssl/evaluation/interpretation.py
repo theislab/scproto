@@ -1,7 +1,7 @@
 import torch
 import requests
 from interpretable_ssl.models.autoencoder import *
-from interpretable_ssl.datasets.pancreas import PancrasDataset
+from interpretable_ssl.datasets.pancreas import PancreasDataset
 from torch.utils.data import DataLoader
 from interpretable_ssl.models.prototype_classifier import ProtClassifier
 import pandas as pd
@@ -44,7 +44,7 @@ def downstream(gene_names):
 
 def calculate_cell_mean_latent(cell, adata, model, device):
     cell_group = adata[adata.obs['cell_type'] == cell]
-    cell_dataset = PancrasDataset(device, adata=cell_group)
+    cell_dataset = PancreasDataset(device, adata=cell_group)
     cell_loader = DataLoader(cell_dataset, 16)
 
     _, mean = calculate_mean_var_latent(model, cell_loader)
@@ -57,7 +57,7 @@ def main():
     # load data
     batch_size = 64
     print("loading data")
-    pancras = PancrasDataset(device)
+    pancras = PancreasDataset(device)
     data_loader = DataLoader(pancras, batch_size=batch_size, shuffle=False)
 
     # load model

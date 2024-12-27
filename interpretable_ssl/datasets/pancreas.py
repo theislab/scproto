@@ -6,7 +6,7 @@ def get_label_encoder_path():
     return "./data/pancras_label_encoder.pkl"
 
 
-class PancrasDataset(SingleCellDataset):
+class PancreasDataset(SingleCellDataset):
 
     def __init__(self, adata=None, original_idx=None):
         super().__init__("pancreas", adata, get_label_encoder_path(), original_idx)
