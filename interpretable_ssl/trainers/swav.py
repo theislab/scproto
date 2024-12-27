@@ -336,9 +336,10 @@ class SwAV(AdoptiveTrainer):
 
     def train(self, epochs=None):
         self.create_dump_path()
-        if self.check_scib_metrics_exist():
-            self.model = self.load_model()
-            return
+        # if self.check_scib_metrics_exist():
+        #     self.model = self.load_model()
+        #     print(f'model exist, because we had csv metrics')
+        #     return
 
         cudnn.benchmark = True
         if epochs is None:
@@ -994,7 +995,7 @@ class SwAV(AdoptiveTrainer):
             p2 = nk_markers(self.ref.adata)
         else:
             similarity = self.encode_adata(self.ref.adata, self.model, True)
-            prot_df = assign_prototype_labels(self.ref.adata, similarity)
+            prot_df = assign_prototype_labels(self.ref.adata, similarity, self.nmb_prototypes)
             x = self.model.decode_and_average()
             prot_adata = generate_proto_adata(
                 x, prot_df["prototype_label"].values, self.ref.adata.var.index.tolist()

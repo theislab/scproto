@@ -108,7 +108,8 @@ class ScpoliTrainer(Trainer):
         #     return x
         # else:
         if return_maped:
-            return x_mapped
+            return torch.argmax(x_mapped, dim=1)
+            # return x_mapped
         return encoder_out
 
     def get_scpoli(self, pretrained_model, return_model=True):
@@ -146,14 +147,18 @@ class ScpoliTrainer(Trainer):
         prototypes = self.get_model_prototypes(model)
         latent_umap, prototype_umap = calculate_umap(latent, prototypes)
         obs = adata.obs
-        similarity = self.encode_adata(adata, model, True)
-        proto_df = assign_prototype_labels(adata, similarity)
+        if prototypes is not None:
+            prototype_assignments = self.encode_adata(adata, model, True)
+            proto_df = assign_prototype_labels(adata, prototype_assignments, self.num_prototypes)
+            proto_labels = proto_df.prototype_label
+        else:
+            proto_labels = None
         return plot_3umaps(
             latent_umap,
             prototype_umap,
             obs.cell_type,
             obs.study,
-            proto_df.prototype_label,
+            proto_labels,
             save_plot,
             self.get_umap_path(split),
         )

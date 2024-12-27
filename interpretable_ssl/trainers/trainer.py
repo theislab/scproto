@@ -4,7 +4,7 @@ from interpretable_ssl.utils import get_device
 from interpretable_ssl.datasets.immune import ImmuneDataset
 from interpretable_ssl.datasets.hlca import HLCADataset
 from interpretable_ssl.trainers.base import TrainerBase
-from interpretable_ssl.datasets.pancreas import PancrasDataset
+from interpretable_ssl.datasets.pancreas import PancreasDataset
 from interpretable_ssl.utils import log_time
 
 
@@ -40,7 +40,7 @@ class Trainer(TrainerBase):
         if dataset_id == "hlca":
             return HLCADataset()
         elif dataset_id == 'pancreas':
-            return PancrasDataset()
+            return PancreasDataset()
         else:
             print("dataset not implemented")
             return None

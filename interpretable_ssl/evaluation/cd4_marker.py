@@ -12,6 +12,7 @@ def plot_marker_gene_expressions(
     x_gene="CD4",
     y_gene="CD8A",
     cell_type_column="cell_type",
+    raw_adata=None,
 ):
     """
     Plot CD8A vs TYROBP expression colored by density and cell type.
@@ -77,6 +78,36 @@ def plot_marker_gene_expressions(
             s=5,
             alpha=0.8,
         )
+
+    if raw_adata is not None:
+        for cell_type in unique_cell_types:
+
+            cell_adata = raw_adata[raw_adata.obs[cell_type_column] == cell_type]
+            x = cell_adata[:, x_gene].X
+            y = cell_adata[:, y_gene].X
+            xmean = np.mean(x)
+            ymean = np.mean(y)
+            axes[0].scatter(
+                xmean,
+                ymean,
+                facecolor=color_dict[cell_type],
+                edgecolor="black",
+                s=20,
+                label=f"{cell_type} Mean",
+                alpha=0.5,
+                linewidth=1,
+            )
+            axes[1].scatter(
+                xmean,
+                ymean,
+                facecolor=color_dict[cell_type],
+                edgecolor="black",
+                s=20,
+                label=f"{cell_type} Mean",
+                alpha=0.5,
+                linewidth=1,
+            )
+
     axes[1].set_title(f"{y_gene} vs {x_gene} (Cell Type Colored)")
     axes[1].set_xlabel(f"{x_gene} Expression")
     axes[1].set_ylabel(f"{y_gene} Expression")
@@ -94,7 +125,9 @@ from collections import Counter
 import anndata
 
 
-def assign_prototype_labels(adata, similarity_tensor, cell_type_column="cell_type"):
+def assign_prototype_labels(
+    adata, prototype_assignments, prot_cnts, cell_type_column="cell_type"
+):
     """
     Assigns each sample in AnnData to the prototype with the highest similarity,
     calculates the majority cell type for each prototype, and assigns the prototype label.
@@ -108,12 +141,12 @@ def assign_prototype_labels(adata, similarity_tensor, cell_type_column="cell_typ
     Returns:
         AnnData: Updated AnnData object with prototype labels and confidence.
     """
-    # Ensure similarity_tensor is a numpy array
-    if isinstance(similarity_tensor, torch.Tensor):
-        similarity_tensor = similarity_tensor.cpu().numpy()
+    # # Ensure similarity_tensor is a numpy array
+    if isinstance(prototype_assignments, torch.Tensor):
+        prototype_assignments = prototype_assignments.cpu().numpy()
 
-    # Step 1: Assign each sample to the prototype with the highest similarity
-    prototype_assignments = np.argmax(similarity_tensor, axis=1)
+    # # Step 1: Assign each sample to the prototype with the highest similarity
+    # prototype_assignments = np.argmax(similarity_tensor, axis=1)
 
     # Step 2: Add the prototype assignments to `adata.obs`
     adata.obs["prototype"] = prototype_assignments
@@ -122,7 +155,7 @@ def assign_prototype_labels(adata, similarity_tensor, cell_type_column="cell_typ
     prototype_labels = []
     prototype_confidences = []
 
-    for prototype in range(similarity_tensor.shape[1]):
+    for prototype in range(prot_cnts):
         # Get samples assigned to this prototype
         assigned_samples = adata.obs[adata.obs["prototype"] == prototype]
 
@@ -147,7 +180,7 @@ def assign_prototype_labels(adata, similarity_tensor, cell_type_column="cell_typ
     # Step 4: Create a DataFrame for prototype labels and confidences
     prototype_df = pd.DataFrame(
         {
-            "prototype": range(similarity_tensor.shape[1]),
+            "prototype": range(prot_cnts),
             "prototype_label": prototype_labels,
             "prototype_confidence": prototype_confidences,
         }

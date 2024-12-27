@@ -243,7 +243,8 @@ class SwavBase(nn.Module):
         reconstructed_input = torch.exp(recon_x) - 1
         return reconstructed_input
 
-    def decode_and_average(self, recon_loss="nb"):
+    def decode_and_average(self, recon_loss="nb", use_avg_batch_embedding=False, use_batch=None):
+        print('new decode')
         """
         Decode the input tensor with all possible batch embeddings, then average the results.
         Args:
@@ -259,6 +260,13 @@ class SwavBase(nn.Module):
             self.get_all_batch_embeddings()
         )  # Shape: (num_combinations, embedding_dim)
 
+        if use_avg_batch_embedding:
+            # Average all embeddings
+            avg_embedding = batch_embeddings.mean(dim=0)
+            batch_embeddings = [avg_embedding]
+        
+        if use_batch is not None:
+            batch_embeddings = [batch_embeddings[use_batch]]    
         # Decode input tensor with each embedding and average results
         decoded_results = []
         for i, batch_embedding in enumerate(batch_embeddings):
