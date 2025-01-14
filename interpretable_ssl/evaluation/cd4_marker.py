@@ -2,8 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import gaussian_kde
-
 import torch
+import numpy as np
+import pandas as pd
+from collections import Counter
+import anndata
 
 
 def plot_marker_gene_expressions(
@@ -119,12 +122,6 @@ def plot_marker_gene_expressions(
     return plt
 
 
-import numpy as np
-import pandas as pd
-from collections import Counter
-import anndata
-
-
 def assign_prototype_labels(
     adata, prototype_assignments, prot_cnts, cell_type_column="cell_type"
 ):
@@ -224,3 +221,5 @@ def generate_proto_adata(x, cell_types, gene_panel=None, confidence=None):
         proto_adata.var.index = pd.Index(gene_panel)
 
     return proto_adata
+
+

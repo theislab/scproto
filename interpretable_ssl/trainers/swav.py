@@ -752,8 +752,10 @@ class SwAV(AdoptiveTrainer):
 
                     self.queue[i, bs:] = self.queue[i, :-bs].clone()
                     self.queue[i, :bs] = embedding[crop_id * bs : (crop_id + 1) * bs]
-
-                q = self.distributed_sinkhorn(out)[-bs:]
+                if self.no_sinkhorn:
+                    q = torch.exp(out / self.epsilon)[-bs:]
+                else:
+                    q = self.distributed_sinkhorn(out)[-bs:]
                 if self.hard_clustering == 1:
                     q = self.hard_clusters(q)
 
@@ -985,6 +987,15 @@ class SwAV(AdoptiveTrainer):
             max_nmb_crops = min(min_cell_cnt, max_nmb_crops)
         self.nmb_crops[0] = min(self.nmb_crops[0], max_nmb_crops)
 
+    def get_proto_adata(self):
+        similarity = self.encode_adata(self.ref.adata, self.model, True)
+        prot_df = assign_prototype_labels(self.ref.adata, similarity, self.nmb_prototypes)
+        x = self.model.decode_and_average(recon_loss=self.recon_loss, use_avg_batch_embedding=True)
+        prot_adata = generate_proto_adata(
+            x.detach(), prot_df["prototype_label"].values, self.ref.adata.var.index.tolist()
+        )
+        return prot_adata
+        
     def plot_marker_genes(self, single_cell=False):
         def nk_markers(adata):
             return plot_marker_gene_expressions(
@@ -994,12 +1005,8 @@ class SwAV(AdoptiveTrainer):
             p1 = plot_marker_gene_expressions(self.ref.adata)
             p2 = nk_markers(self.ref.adata)
         else:
-            similarity = self.encode_adata(self.ref.adata, self.model, True)
-            prot_df = assign_prototype_labels(self.ref.adata, similarity, self.nmb_prototypes)
-            x = self.model.decode_and_average()
-            prot_adata = generate_proto_adata(
-                x, prot_df["prototype_label"].values, self.ref.adata.var.index.tolist()
-            )
+            
+            prot_adata = self.get_proto_adata()
             p1 = plot_marker_gene_expressions(prot_adata)
             p2 = nk_markers(prot_adata)
         return p1, p2

@@ -99,7 +99,7 @@ class ScpoliTrainer(Trainer):
             inputs[key] = inputs[key].to(self.device)
         return inputs
 
-    def encode_batch(self, model, batch, return_maped=False):
+    def encode_batch(self, model, batch, return_maped=False, return_mapped_idx=True):
         batch = self.move_input_on_device(batch)
         model.eval()
         with torch.no_grad():
@@ -108,7 +108,11 @@ class ScpoliTrainer(Trainer):
         #     return x
         # else:
         if return_maped:
-            return torch.argmax(x_mapped, dim=1)
+            if return_mapped_idx:
+                return torch.argmax(x_mapped, dim=1)
+            else:
+                return x_mapped
+            
             # return x_mapped
         return encoder_out
 
@@ -127,13 +131,13 @@ class ScpoliTrainer(Trainer):
             model = self.adapt_ref_model(ref_model, self.query.adata)
         return self.encode_adata(self.query.adata, model)
 
-    def encode_adata(self, adata, model=None, return_mapped=False):
+    def encode_adata(self, adata, model=None, return_mapped=False, return_mapped_idx=True):
         if model is None:
             model = self.load_model()
         loader = self.prepare_scpoli_dataloader(
             adata, self.get_scpoli(model), shuffle=False
         )
-        embeddings = [self.encode_batch(model, batch, return_mapped) for batch in tqdm(loader)]
+        embeddings = [self.encode_batch(model, batch, return_mapped, return_mapped_idx) for batch in tqdm(loader)]
         return torch.cat(embeddings)
 
     def get_model_prototypes(self, model):

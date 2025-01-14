@@ -65,4 +65,5 @@ ABBREVIATIONS = {
     "weighted_batch": "wb",
     "knn_similarity": 'knnsim',
     "recon_loss": 'recon',
+    "no_sinkhorn": 'nosink',
 }

@@ -102,6 +102,7 @@ def get_defaults():
         "batch_sinkhorn": 1,
         "weighted_batch": 0,
         "knn_similarity": 'cosine',
-        "recon_loss": 'mse'
+        "recon_loss": 'mse',
+        "no_sinkhorn": 0
     }
     return defaults

@@ -143,7 +143,7 @@ class OriginalTrainer(AdoptiveTrainer):
     def get_query_model_latent(self, model, adata):
         return model.get_latent(adata, mean=True)
 
-    def encode_batch(self, model, batch, return_maped=False):
+    def encode_batch(self, model, batch, return_maped=False, return_mapped_idx=None):
         batch = self.move_input_on_device(batch)
         scpoli_model = self.get_scpoli(model)
         scpoli_model.to(self.device)
