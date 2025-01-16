@@ -6,7 +6,9 @@ def generate_model_name(defaults, params):
 
     """Generate a shortened job name based on the current parameters."""
     job_name_parts = []
-
+    if 'prefix' in params:
+        job_name_parts.append(params['prefix'])
+        
     if model_name_version < 6:
         # Always include the augmentation type
         aug_type = params.get("augmentation_type", "community")
@@ -41,7 +43,7 @@ def generate_model_name(defaults, params):
                     max_length = len(val)
             shortened_val = str(val)[:max_length] if isinstance(val, str) else str(val)
             job_name_parts.append(f"{abbreviated_key}_{shortened_val}")
-
+    
     # Join all parts to form the job name
     job_name = "_".join(job_name_parts)
     return job_name

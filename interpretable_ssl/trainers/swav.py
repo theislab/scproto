@@ -314,7 +314,7 @@ class SwAV(AdoptiveTrainer):
             log_dict = log_dict | self.calculate_prototype_metrics()
 
         if metrics is not None:
-            ref, query = metrics
+            ref, query, all = metrics
             metric_dict = {}
 
             def add_metric(metric_part, part_str):
@@ -327,6 +327,7 @@ class SwAV(AdoptiveTrainer):
 
             add_metric(ref, "ref")
             add_metric(query, "query")
+            add_metric(all, 'all')
             log_dict = log_dict | metric_dict
 
         if not self.debug:
@@ -368,7 +369,7 @@ class SwAV(AdoptiveTrainer):
             scores, self.queue = self.train_one_epoch(epoch)
             metrics = None
             if (epoch % self.scib_freq == 0) and (self.save_scib == 1):
-                metrics = self.save_metrics(False, False)
+                metrics = self.save_metrics(True, False)
             # self.scpoli_.model = self.model.scpoli_model
             # self.training_stats.update(scores)
             self.log_wandb_loss(scores, epoch, metrics)
