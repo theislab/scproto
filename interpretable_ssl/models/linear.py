@@ -9,7 +9,8 @@ import pandas as pd
 from tqdm import tqdm
 
 class LinearClassifier:
-    def __init__(self, embeddings, labels, batch_size=32, test_size=0.2, random_state=42, lr=0.001, epochs=20):
+    def __init__(self, embeddings=None, labels=None, batch_size=32, test_size=0.2, random_state=42, lr=0.001, epochs=20,
+                 X_train=None, X_test=None, y_train=None, y_test=None):
         """
         Initialize the classifier with embeddings, labels, and hyperparameters.
         Args:
@@ -20,37 +21,55 @@ class LinearClassifier:
             random_state (int): Seed for reproducibility.
             lr (float): Learning rate for the optimizer.
             epochs (int): Number of training epochs.
+            X_train, X_test, y_train, y_test: Optional pre-split training and testing data.
         """
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.embeddings = torch.tensor(embeddings, dtype=torch.float32)
-        self.labels = labels
         self.batch_size = batch_size
         self.test_size = test_size
         self.random_state = random_state
         self.lr = lr
         self.epochs = epochs
+
+        self.embeddings = torch.tensor(embeddings, dtype=torch.float32) if embeddings is not None else None
+        self.labels = labels
+        self.X_train = X_train
+        self.X_test = X_test
+        self.y_train = y_train
+        self.y_test = y_test
+
         self._prepare_data()
         self._build_model()
 
     def _prepare_data(self):
-        """Convert labels to numeric and split data into train/test sets."""
-        le = LabelEncoder()
-        numeric_labels = le.fit_transform(self.labels)
-        self.classes_ = le.classes_
+        """Prepare the data by encoding labels and creating datasets."""
+        if self.X_train is not None and self.X_test is not None:
+            # Assume y_train and y_test are provided with X_train and X_test
+            self.X_train = torch.tensor(self.X_train, dtype=torch.float32)
+            self.X_test = torch.tensor(self.X_test, dtype=torch.float32)
+            self.y_train, self.y_test = self._encode_labels(self.y_train, self.y_test)
+        else:
+            # Split embeddings and labels
+            numeric_labels = self._encode_labels(self.labels)
+            self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+                self.embeddings, numeric_labels, test_size=self.test_size, random_state=self.random_state
+            )
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            self.embeddings, numeric_labels, test_size=self.test_size, random_state=self.random_state
-        )
-
-        self.train_data = CustomDataset(X_train, y_train)
-        self.test_data = CustomDataset(X_test, y_test)
+        self.train_data = CustomDataset(self.X_train, self.y_train)
+        self.test_data = CustomDataset(self.X_test, self.y_test)
 
         self.train_loader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
         self.test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
 
+    def _encode_labels(self, *label_sets):
+        """Encode labels into numeric format."""
+        le = LabelEncoder()
+        labels = [torch.tensor(le.fit_transform(labels), dtype=torch.long) for labels in label_sets] if label_sets else le.fit_transform(self.labels)
+        self.classes_ = le.classes_
+        return labels
+
     def _build_model(self):
         """Build a simple linear classifier."""
-        input_size = self.embeddings.shape[1]
+        input_size = self.X_train.shape[1]
         output_size = len(self.classes_)
         self.model = nn.Linear(input_size, output_size).to(self.device)
         self.criterion = nn.CrossEntropyLoss()
