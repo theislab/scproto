@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from interpretable_ssl.utils import log_time
 from interpretable_ssl.evaluation.cd4_marker import assign_prototype_labels
 
+
 class ScpoliTrainer(Trainer):
     # @log_time('scpoli trainer')
     def __init__(
@@ -83,7 +84,7 @@ class ScpoliTrainer(Trainer):
         return model
 
     def adapt_ref_model(self, ref_model, adata):
-        query_model = self.get_model() # Create an uninitialized model of the same type
+        query_model = self.get_model()  # Create an uninitialized model of the same type
         query_model.load_state_dict(ref_model.state_dict())
         scpoli_query = scPoli.load_query_data(
             adata=adata,
@@ -112,7 +113,7 @@ class ScpoliTrainer(Trainer):
                 return torch.argmax(x_mapped, dim=1)
             else:
                 return x_mapped
-            
+
             # return x_mapped
         return encoder_out
 
@@ -131,13 +132,18 @@ class ScpoliTrainer(Trainer):
             model = self.adapt_ref_model(ref_model, self.query.adata)
         return self.encode_adata(self.query.adata, model)
 
-    def encode_adata(self, adata, model=None, return_mapped=False, return_mapped_idx=True):
+    def encode_adata(
+        self, adata, model=None, return_mapped=False, return_mapped_idx=True
+    ):
         if model is None:
             model = self.load_model()
         loader = self.prepare_scpoli_dataloader(
             adata, self.get_scpoli(model), shuffle=False
         )
-        embeddings = [self.encode_batch(model, batch, return_mapped, return_mapped_idx) for batch in tqdm(loader)]
+        embeddings = [
+            self.encode_batch(model, batch, return_mapped, return_mapped_idx)
+            for batch in tqdm(loader)
+        ]
         return torch.cat(embeddings)
 
     def get_model_prototypes(self, model):
@@ -152,8 +158,10 @@ class ScpoliTrainer(Trainer):
         latent_umap, prototype_umap = calculate_umap(latent, prototypes)
         obs = adata.obs
         if prototypes is not None:
-            prototype_assignments = self.encode_adata(adata, model, True)
-            proto_df = assign_prototype_labels(adata, prototype_assignments, self.num_prototypes)
+            prototype_assignments = self.encode_adata(adata, model, True, False)
+            proto_df = assign_prototype_labels(
+                adata, prototype_assignments, self.num_prototypes
+            )
             proto_labels = proto_df.prototype_label
         else:
             proto_labels = None
@@ -187,32 +195,43 @@ class ScpoliTrainer(Trainer):
     def calculate_other_metrics(self):
         return {}, {}
 
-    def save_metrics(self, save=True, calc_others = True):
+    def calc_scib(self, adata, name, other={}, save=True, is_ref=False):
+        if not is_ref:
+            model = self.adapt_ref_model(self.model, adata)
+        else:
+            model = self.model
+
+        latent = self.encode_adata(adata, model)
+        res_df = MetricCalculator(
+            adata,
+            [latent],
+            self.dump_path,
+            save_path=self.get_metric_file_path(name),
+        ).calculate(other, save)
+        return res_df
+
+    def save_metrics(self, save=True, calc_others=True):
         if calc_others:
             ref_other, query_other = self.calculate_other_metrics()
         else:
             ref_other, query_other = {}, {}
-        ref_latent = self.encode_ref(self.model)
-        ref_df = MetricCalculator(
-            self.ref.adata,
-            [ref_latent],
-            self.dump_path,
-            save_path=self.get_metric_file_path("ref"),
-        ).calculate(ref_other, save)
-        # calculate_scib_metrics_using_benchmarker(
-        #     self.ref.adata, ref_latent, self.get_scib_file_path('ref')
-        # )
-        query_latent = self.encode_query(self.model)
-        query_df = MetricCalculator(
-            self.query.adata,
-            [query_latent],
-            self.dump_path,
-            save_path=self.get_metric_file_path("query"),
-        ).calculate(query_other, save)
+        ref_df = self.calc_scib(self.ref.adata, "ref", ref_other, save, is_ref=True)
+        query_df = self.calc_scib(self.query.adata, "query", query_other, save)
+        all_df = self.calc_scib(self.dataset.adata, "all", {}, save)
+
         def get_metrics(df):
-            return df.loc['latent' ,['Batch correction','Bio conservation', 'scib total']], df[['Rank-PCA', 'Corr-PCA', 'Corr-Weighted']].mean(axis=1).iloc[0].item()
-        return get_metrics(ref_df), get_metrics(query_df)
-    
+            return (
+                df.loc[
+                    "latent", ["Batch correction", "Bio conservation", "scib total"]
+                ],
+                df[["Rank-PCA", "Corr-PCA", "Corr-Weighted"]]
+                .mean(axis=1)
+                .iloc[0]
+                .item(),
+            )
+
+        return get_metrics(ref_df), get_metrics(query_df), get_metrics(all_df)
+
         # calculate_scib_metrics_using_benchmarker(
         #     self.query.adata, query_latent, self.get_scib_file_path('query')
         # )

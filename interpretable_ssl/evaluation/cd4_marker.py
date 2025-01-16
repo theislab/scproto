@@ -123,7 +123,7 @@ def plot_marker_gene_expressions(
 
 
 def assign_prototype_labels(
-    adata, prototype_assignments, prot_cnts, cell_type_column="cell_type"
+    adata, similarity_tensor, prot_cnts, k=10, cell_type_column="cell_type"
 ):
     """
     Assigns each sample in AnnData to the prototype with the highest similarity,
@@ -139,35 +139,36 @@ def assign_prototype_labels(
         AnnData: Updated AnnData object with prototype labels and confidence.
     """
     # # Ensure similarity_tensor is a numpy array
-    if isinstance(prototype_assignments, torch.Tensor):
-        prototype_assignments = prototype_assignments.cpu().numpy()
+    if isinstance(similarity_tensor, torch.Tensor):
+        similarity_tensor = similarity_tensor.cpu().numpy()
 
     # # Step 1: Assign each sample to the prototype with the highest similarity
     # prototype_assignments = np.argmax(similarity_tensor, axis=1)
 
-    # Step 2: Add the prototype assignments to `adata.obs`
-    adata.obs["prototype"] = prototype_assignments
 
     # Step 3: Calculate majority cell type and confidence for each prototype
     prototype_labels = []
     prototype_confidences = []
 
     for prototype in range(prot_cnts):
-        # Get samples assigned to this prototype
-        assigned_samples = adata.obs[adata.obs["prototype"] == prototype]
+        # Get the similarity scores for the current prototype
+        prototype_scores = similarity_tensor[:, prototype]
 
-        # Get the cell types of these samples
-        cell_types = assigned_samples[cell_type_column]
+        # Find the indices of the k-nearest samples
+        k_nearest_indices = np.argsort(-prototype_scores)[:k]
 
-        if len(cell_types) > 0:
+        # Get the cell types of the k-nearest samples
+        k_nearest_cell_types = adata.obs.iloc[k_nearest_indices][cell_type_column]
+
+        if len(k_nearest_cell_types) > 0:
             # Count the frequency of each cell type
-            cell_type_counts = Counter(cell_types)
+            cell_type_counts = Counter(k_nearest_cell_types)
 
             # Determine the majority cell type and its confidence
             majority_cell_type, majority_count = cell_type_counts.most_common(1)[0]
-            confidence = majority_count / len(cell_types)
+            confidence = majority_count / k
         else:
-            # Handle prototypes with no assigned samples
+            # Handle prototypes with no k-nearest samples
             majority_cell_type = "Unknown"
             confidence = 0.0
 
