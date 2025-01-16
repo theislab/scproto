@@ -446,6 +446,32 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         return augmented_data_list
 
+    def mask_augment(self, index, mask_probability=0.2):
+        """
+        Augment the data by masking a portion of the original expression values.
+        """
+        # Call the superclass's __getitem__ method to get the original data
+        original_data = super().__getitem__(index)
+        original_expression = original_data["x"].numpy().flatten()  # Convert to numpy array
+
+        augmented_data_list = []
+        for _ in range(self.n_augmentations):
+            # Generate a random mask based on the mask_probability
+            mask = np.random.rand(original_expression.shape[0]) < mask_probability
+
+            # Apply the mask: set values to 0 where the mask is True
+            augmented_expression = original_expression.copy()
+            augmented_expression[mask] = 0
+
+            # Replace the "x" key in the original data with the augmented expression
+            augmented_data = original_data.copy()
+            augmented_data["x"] = torch.tensor(augmented_expression, dtype=torch.float32)
+
+            augmented_data_list.append(augmented_data)
+
+        return augmented_data_list
+
+
     def augment_on_the_fly(self, index):
         """Augment a single cell by sampling from the same cell type, performing a random walk on the kNN graph, or adding negative binomial noise."""
         if self.augmentation_type == "cell_type":
@@ -465,6 +491,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
                 if random.random() < self.supervised_ratio
                 else self.knn_augment(index)
             )
+        elif self.augmentation_type == "mask":
+            return self.mask_augment(index)
         else:
             raise ValueError(f"Invalid augmentation_type: {self.augmentation_type}")
 
@@ -482,7 +510,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         else:
             raise TypeError("Invalid index type")
 
-        if self.augmentation_type == "nb":
+        if self.augmentation_type == "nb" or self.augmentation_type == "mask":
             combined_data = self.combine_augmented_data(augmented_data_list)
         else:
             # Fetch the augmented data using the parent's __getitem__ method
