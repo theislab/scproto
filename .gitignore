@@ -4,7 +4,7 @@ cache
 __pycache__
 test.ipynb
 .ipynb_checkpoints
-wandb
+wandb*
 results
 run.sbatch
 barlow_twins_*
