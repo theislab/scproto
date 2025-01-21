@@ -104,5 +104,9 @@ def get_defaults():
         "knn_similarity": 'cosine',
         "recon_loss": 'mse',
         "no_sinkhorn": 0,
+        "wandb_sweep": 0,
+        "sweep_id": -1,
+        "mask_probability": 0.2,
+        "default_dispersion": 0.1,
     }
     return defaults

@@ -97,6 +97,8 @@ class SwAV(AdoptiveTrainer):
             knn_similarity=self.knn_similarity,
             ds_name=str(self.ref),
             save_dir='./graphs',
+            mask_probability=self.mask_probability,
+            default_dispersion=self.default_dispersion,
             # cell_type_keys=[self.cell_type_key],
             condition_encoders=scpoli_encoder.condition_encoders,
             conditions_combined_encoder=scpoli_encoder.conditions_combined_encoder,
@@ -153,7 +155,6 @@ class SwAV(AdoptiveTrainer):
                 self.num_prototypes,
             )
         else:
-            # TODO: change 16
             return SwAVModel(
                 self.latent_dims,
                 self.num_prototypes,
@@ -377,8 +378,8 @@ class SwAV(AdoptiveTrainer):
 
         # if self.train_decoder:
         #     self.only_decoder_train()
-        self.plot_umap(self.model, self.original_ref.adata, "ref")
-        self.plot_query_umap()
+        # self.plot_umap(self.model, self.original_ref.adata, "ref")
+        # self.plot_query_umap()
         try:
             self.save_metrics()
         except Exception as e:
@@ -972,7 +973,7 @@ class SwAV(AdoptiveTrainer):
         #     labeled_indices=[],
         # )
         # self.model.set_scpoli_model(scpoli_query.model)
-        self.model = self.adapt_ref_model(self.model, self.ref.adata)
+        self.model = self.prepare_model(self.model, self.ref.adata)
         self.train_augmentation = "cell_type"
         self.build_data()
         self.build_optimizer()
@@ -991,7 +992,7 @@ class SwAV(AdoptiveTrainer):
     def get_proto_adata(self):
         similarity = self.encode_adata(self.ref.adata, self.model, True)
         prot_df = assign_prototype_labels(self.ref.adata, similarity, self.nmb_prototypes)
-        x = self.model.decode_and_average(recon_loss=self.recon_loss, use_avg_batch_embedding=True)
+        x = self.model.decode_proto(recon_loss=self.recon_loss, use_avg_batch_embedding=True)
         prot_adata = generate_proto_adata(
             x.detach(), prot_df["prototype_label"].values, self.ref.adata.var.index.tolist()
         )

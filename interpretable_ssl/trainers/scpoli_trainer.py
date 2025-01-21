@@ -79,18 +79,25 @@ class ScpoliTrainer(Trainer):
         if adata is None:
             adata = self.query.adata
         model = self.load_model()
-        model = self.adapt_ref_model(model, adata)
+        model = self.prepare_model(model, adata)
         model.to(self.device)
         return model
 
-    def adapt_ref_model(self, ref_model, adata):
+    def adapt_ref_model(self, ref_model, adata, retrain_epochs=0):
         query_model = self.get_model()  # Create an uninitialized model of the same type
+        # qshape = self.get_scpoli(query_model).embeddings[0].weight.shape[0]
+        # ref_shape = self.get_scpoli(ref_model).embeddings[0].weight.shape[0]
+        # print(f'query model: {qshape}, ref shape: {ref_shape}')
         query_model.load_state_dict(ref_model.state_dict())
         scpoli_query = scPoli.load_query_data(
             adata=adata,
             reference_model=self.get_scpoli(query_model, False),
             labeled_indices=[],
         )
+        if retrain_epochs > 0:
+            scpoli_query.train(n_epochs=retrain_epochs, 
+                              pretraining_epochs=retrain_epochs)
+            
         query_model.set_scpoli_encoder(scpoli_query.model)
         query_model.to(self.device)
         return query_model
@@ -129,14 +136,30 @@ class ScpoliTrainer(Trainer):
         if ref_model is None:
             model = self.load_query_model()
         else:
-            model = self.adapt_ref_model(ref_model, self.query.adata)
+            model = self.prepare_model(ref_model, self.query.adata)
         return self.encode_adata(self.query.adata, model)
 
-    def encode_adata(
-        self, adata, model=None, return_mapped=False, return_mapped_idx=True
-    ):
+    def is_ref(self, model, adata):
+        for key, values in self.get_scpoli(model, return_model=False).conditions_.items():
+            data_values = adata.obs[key].unique()
+            is_subset = set(data_values).issubset(values)
+            if not is_subset:
+                return False
+        return True
+    
+    def prepare_model(self, model = None, adata=None, retrain_epochs = 0):
         if model is None:
             model = self.load_model()
+        if self.is_ref(model, adata):
+            return model
+        model = self.adapt_ref_model(model, adata, retrain_epochs)
+        return model
+        
+    def encode_adata(
+        self, adata, model=None, return_mapped=False, return_mapped_idx=True, retrain_epochs=0
+    ):
+        model = self.prepare_model(model, adata, retrain_epochs)
+            
         loader = self.prepare_scpoli_dataloader(
             adata, self.get_scpoli(model), shuffle=False
         )
@@ -196,12 +219,12 @@ class ScpoliTrainer(Trainer):
         return {}, {}
 
     def calc_scib(self, adata, name, other={}, save=True, is_ref=False):
-        if not is_ref:
-            model = self.adapt_ref_model(self.model, adata)
-        else:
-            model = self.model
-
-        latent = self.encode_adata(adata, model)
+        # if not is_ref:
+        #     model = self.adapt_ref_model(self.model, adata)
+        # else:
+        #     model = self.model
+        
+        latent = self.encode_adata(adata, self.model)
         res_df = MetricCalculator(
             adata,
             [latent],

@@ -27,7 +27,7 @@ class Trainer(TrainerBase):
         self.debug = debug
         self.ref_latent, self.query_latent, self.all_latent = None, None, None
 
-        if not self.debug:
+        if (not self.debug) and (self.wandb_sweep != 1):
             self.init_wandb()
 
     def get_model(self):
@@ -53,7 +53,7 @@ class Trainer(TrainerBase):
             self.job_name = f"{self.get_model_name()}/{self.dataset}"
         wandb.init(
             name=self.job_name,
-            project="interpretable-ssl",
+            # project="interpretable-ssl",
             config={
                 "num_prototypes": self.num_prototypes,
                 "hidden dim": self.hidden_dim,

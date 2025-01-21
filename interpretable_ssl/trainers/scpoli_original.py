@@ -108,14 +108,19 @@ class OriginalTrainer(AdoptiveTrainer):
         model.model.load_state_dict(torch.load(path)["model_state_dict"])
         return model
 
-    def adapt_ref_model(self, ref_model, adata):
+    def adapt_ref_model(self, ref_model, adata, retrain_epochs=0):
         query_model = self.get_model()
         query_model.model.load_state_dict(ref_model.model.state_dict())
-        return scPoli.load_query_data(
+        scpoli_query = scPoli.load_query_data(
             adata=adata,
             reference_model=query_model,
             labeled_indices=[],
         )
+        if retrain_epochs > 0:
+            scpoli_query.train(n_epochs=retrain_epochs, 
+                              pretraining_epochs=retrain_epochs)
+        return scpoli_query
+            
 
     def load_query_model(self, adata=None):
         if adata is None:

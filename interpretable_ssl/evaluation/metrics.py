@@ -112,7 +112,7 @@ class MetricCalculator:
                 embedding, self.adata.obs[self.label_key], batch_size=128, epochs=epochs
             )
             classifier.train()
-            df = classifier.evaluate()
+            df, _ = classifier.evaluate()
 
             return self.extract_f1_score(df, key, 'linear classifier f1')
 

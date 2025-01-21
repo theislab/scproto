@@ -7,10 +7,24 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import f1_score
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
+
 
 class LinearClassifier:
-    def __init__(self, embeddings=None, labels=None, batch_size=32, test_size=0.2, random_state=42, lr=0.001, epochs=20,
-                 X_train=None, X_test=None, y_train=None, y_test=None):
+    def __init__(
+        self,
+        embeddings=None,
+        labels=None,
+        batch_size=32,
+        test_size=0.2,
+        random_state=42,
+        lr=0.001,
+        epochs=20,
+        X_train=None,
+        X_test=None,
+        y_train=None,
+        y_test=None,
+    ):
         """
         Initialize the classifier with embeddings, labels, and hyperparameters.
         Args:
@@ -23,20 +37,25 @@ class LinearClassifier:
             epochs (int): Number of training epochs.
             X_train, X_test, y_train, y_test: Optional pre-split training and testing data.
         """
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print("new")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.batch_size = batch_size
         self.test_size = test_size
         self.random_state = random_state
         self.lr = lr
         self.epochs = epochs
 
-        self.embeddings = torch.tensor(embeddings, dtype=torch.float32) if embeddings is not None else None
+        self.embeddings = (
+            torch.tensor(embeddings, dtype=torch.float32)
+            if embeddings is not None
+            else None
+        )
         self.labels = labels
         self.X_train = X_train
         self.X_test = X_test
         self.y_train = y_train
         self.y_test = y_test
-
+        self.classes_ = None
         self._prepare_data()
         self._build_model()
 
@@ -46,26 +65,40 @@ class LinearClassifier:
             # Assume y_train and y_test are provided with X_train and X_test
             self.X_train = torch.tensor(self.X_train, dtype=torch.float32)
             self.X_test = torch.tensor(self.X_test, dtype=torch.float32)
-            self.y_train, self.y_test = self._encode_labels(self.y_train, self.y_test)
+            self.le = self.fit_label_encoder(self.y_train)
+            self.y_train, self.y_test = self._encode_labels(
+                self.y_train
+            ), self._encode_labels(self.y_test)
         else:
             # Split embeddings and labels
+            self.le = self.fit_label_encoder(self.labels)
             numeric_labels = self._encode_labels(self.labels)
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-                self.embeddings, numeric_labels, test_size=self.test_size, random_state=self.random_state
+                self.embeddings,
+                numeric_labels,
+                test_size=self.test_size,
+                random_state=self.random_state,
             )
 
         self.train_data = CustomDataset(self.X_train, self.y_train)
         self.test_data = CustomDataset(self.X_test, self.y_test)
 
-        self.train_loader = DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
-        self.test_loader = DataLoader(self.test_data, batch_size=self.batch_size, shuffle=False)
+        self.train_loader = DataLoader(
+            self.train_data, batch_size=self.batch_size, shuffle=True
+        )
+        self.test_loader = DataLoader(
+            self.test_data, batch_size=self.batch_size, shuffle=False
+        )
 
-    def _encode_labels(self, *label_sets):
-        """Encode labels into numeric format."""
+    def fit_label_encoder(self, labels):
         le = LabelEncoder()
-        labels = [torch.tensor(le.fit_transform(labels), dtype=torch.long) for labels in label_sets] if label_sets else le.fit_transform(self.labels)
+        le.fit(labels)
         self.classes_ = le.classes_
-        return labels
+        return le
+
+    def _encode_labels(self, labels):
+        """Encode labels into numeric format."""
+        return self.le.transform(labels)
 
     def _build_model(self):
         """Build a simple linear classifier."""
@@ -78,12 +111,17 @@ class LinearClassifier:
     def train(self):
         """Train the linear classifier using tqdm for progress bar."""
         self.model.train()
-        
+
         # Loop over the epochs
         for epoch in range(self.epochs):
             running_loss = 0.0
             # Initialize tqdm for the progress bar, set total number of batches
-            with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.epochs}", unit='batch', leave=False) as pbar:
+            with tqdm(
+                total=len(self.train_loader),
+                desc=f"Epoch {epoch+1}/{self.epochs}",
+                unit="batch",
+                leave=False,
+            ) as pbar:
                 for inputs, labels in self.train_loader:
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
 
@@ -116,21 +154,32 @@ class LinearClassifier:
     def evaluate(self):
         """Evaluate the model and return F1 scores for each class and overall metrics as a DataFrame."""
         # Get predictions and true labels for train and test sets
-        y_true_train, y_pred_train = self._evaluate_on_loader(self.train_loader)
+        # y_true_train, y_pred_train = self._evaluate_on_loader(self.train_loader)
         y_true_test, y_pred_test = self._evaluate_on_loader(self.test_loader)
 
         # Calculate F1 scores for each class and overall metrics
-        f1_train_per_class = f1_score(y_true_train, y_pred_train, average=None)
-        f1_test_per_class = f1_score(y_true_test, y_pred_test, average=None)
+        # f1_train_per_class = f1_score(y_true_train, y_pred_train, average=None)
+        # Map the true and predicted labels to the same class order
+        all_classes = np.arange(len(self.classes_)).tolist()
+        y_true_test = [all_classes.index(label) for label in y_true_test]
+        y_pred_test = [all_classes.index(label) for label in y_pred_test]
 
-        # Calculate macro, micro, and weighted F1 scores
-        f1_train_macro = f1_score(y_true_train, y_pred_train, average='macro')
-        f1_train_micro = f1_score(y_true_train, y_pred_train, average='micro')
-        f1_train_weighted = f1_score(y_true_train, y_pred_train, average='weighted')
+        f1_test_per_class = f1_score(
+            y_true_test,
+            y_pred_test,
+            labels=all_classes,  # Explicitly include all encoded class indices
+            average=None,
+            zero_division=0,  # Avoid division by zero warnings
+        )
 
-        f1_test_macro = f1_score(y_true_test, y_pred_test, average='macro')
-        f1_test_micro = f1_score(y_true_test, y_pred_test, average='micro')
-        f1_test_weighted = f1_score(y_true_test, y_pred_test, average='weighted')
+        # # Calculate macro, micro, and weighted F1 scores
+        # f1_train_macro = f1_score(y_true_train, y_pred_train, average='macro')
+        # f1_train_micro = f1_score(y_true_train, y_pred_train, average='micro')
+        # f1_train_weighted = f1_score(y_true_train, y_pred_train, average='weighted')
+
+        f1_test_macro = f1_score(y_true_test, y_pred_test, average="macro")
+        f1_test_micro = f1_score(y_true_test, y_pred_test, average="micro")
+        f1_test_weighted = f1_score(y_true_test, y_pred_test, average="weighted")
 
         # # Create DataFrame for F1 scores
         # f1_df = pd.DataFrame({
@@ -140,15 +189,18 @@ class LinearClassifier:
         # })
 
         # Append overall metrics
-        overall_metrics = pd.DataFrame({
-            'Class': ['macro', 'micro', 'weighted'],
-            # 'Train F1 Score': [f1_train_macro, f1_train_micro, f1_train_weighted],
-            'F1 Score': [f1_test_macro, f1_test_micro, f1_test_weighted]
-        })
+        overall_metrics = pd.DataFrame(
+            {
+                "Class": ["macro", "micro", "weighted"],
+                # 'Train F1 Score': [f1_train_macro, f1_train_micro, f1_train_weighted],
+                "F1 Score": [f1_test_macro, f1_test_micro, f1_test_weighted],
+            }
+        )
 
         # f1_df = pd.concat([f1_df, overall_metrics], ignore_index=True)
 
-        return overall_metrics
+        return overall_metrics, f1_test_per_class
+
 
 class CustomDataset(Dataset):
     def __init__(self, embeddings, labels):

@@ -6,13 +6,15 @@ from interpretable_ssl.evaluation.metrics import MetricCalculator
 class MetricGenerator:
     def __init__(self, trainer) -> None:
         self.trainer = trainer
-        if trainer.finetuning:
-            self.all_metric_file = "all-semi-query-metrics.csv"
-        else:
-            self.all_metric_file = "all-pretrained-query-metrics.csv"
-        self.all_metric_path = os.path.join(
-            self.trainer.get_dump_path(), self.all_metric_file
-        )
+        
+        # if self.trainer.finetuning:
+        #     self.all_metric_file = "all-semi-query-metrics.csv"
+        # else:
+        #     self.all_metric_file = "all-pretrained-query-metrics.csv"
+            
+        # self.all_metric_path = os.path.join(
+        #     self.trainer.get_dump_path(), self.all_metric_file
+        # )
         print('metric generator for ', trainer.name)
 
     def clean_scib_df(self, df):
@@ -24,14 +26,14 @@ class MetricGenerator:
         df_numeric = df_numeric.dropna(how="all")
         return df_numeric
 
-    def load_metrics(self):
+    def load_metrics(self, split='query'):
         # Get the dump folder path from the trainer
         dump_folder = self.trainer.get_dump_path()
 
         # Loop through all files in the specified folder
         for file in os.listdir(dump_folder):
             # Check if the file is a CSV and contains both 'semi' and 'query'
-            if file.endswith(".csv") and "semi" in file and "query" in file:
+            if file.endswith(".csv") and "semi" in file and split in file:
                 file_path = os.path.join(dump_folder, file)
                 print(f"Loading file: {file_path}")
                 # Load the CSV file into a DataFrame
@@ -46,10 +48,11 @@ class MetricGenerator:
         #     print(self.trainer.name, "cant init scpoli")
         return self.trainer.encode_query()
 
-    def get_query_calculator(self):
+    def get_adata_calculator(self, adata, retrain_epochs=0):
+        
         return MetricCalculator(
-            self.trainer.query.adata,
-            [self.encode_query()],
+            adata,
+            [self.trainer.encode_adata(adata, retrain_epochs=retrain_epochs)],
             self.trainer.get_dump_path(),
             [self.trainer.name],
             self.trainer.get_dump_path(),
@@ -71,21 +74,45 @@ class MetricGenerator:
                 return True
         return False
 
-    def load_all_metrics(self):
-        if os.path.exists(self.all_metric_path):
-            df = pd.read_csv(self.all_metric_path, index_col=0)
+    def get_metric_path(self, split, retrain_epochs=0):
+        if self.trainer.finetuning:
+            all_metric_file = f"all-semi-{split}-metrics"
+        else:
+            all_metric_file = f"all-pretrained-{split}-metrics"
+        if retrain_epochs > 0:
+            all_metric_file += f"-retrain-{retrain_epochs}"
+        return os.path.join(
+            self.trainer.get_dump_path(), all_metric_file + '.csv'
+        )
+    
+    def load_all_metrics(self, split, retrain_epochs=0):
+        path = self.get_metric_path(split, retrain_epochs)
+        if os.path.exists(path):
+            df = pd.read_csv(path, index_col=0)
             df.index = [self.trainer.name]
             return df
         return None
 
-    def generate_metrics(self):
-        all_metrics = self.load_all_metrics()
+    def get_adata(self, split):
+        
+        if split == 'query':
+            ds = self.trainer.query
+        elif split == 'ref':
+            ds = self.trainer.ref
+        elif split == 'all':
+            ds = self.trainer.dataset
+        else: 
+            raise ValueError('split should be query, ref or all')
+        
+        return ds.adata
+    def generate_metrics(self, split='query', retrain_epochs=0):
+        all_metrics = self.load_all_metrics(split, retrain_epochs)
         if all_metrics is not None:
             return all_metrics
 
-        metrics = self.load_metrics()
+        metrics = self.load_metrics(split)
 
-        calculator = self.get_query_calculator()
+        calculator = self.get_adata_calculator(self.get_adata(split), retrain_epochs)
         knn = calculator.knn_results()
         linear = calculator.linear_results(50)
 
@@ -93,7 +120,7 @@ class MetricGenerator:
         if not self.check_scgraph_exist(metrics):
             all_metrics.append(calculator.calculate_scgraph())
 
-        if not self.check_scib_exist(metrics):
+        if (not self.check_scib_exist(metrics)) or retrain_epochs > 0:
             scib_df = calculator.calculate_scib()
             all_metrics.append(self.clean_scib_df(scib_df))
 
@@ -101,6 +128,6 @@ class MetricGenerator:
         dfs.append(metrics)
         final_df = pd.concat(dfs, axis=1)
         final_df.index = [self.trainer.name]
-        final_df.to_csv(self.all_metric_path)
+        final_df.to_csv(self.get_metric_path(split, retrain_epochs))
         # final_df.index = self.trainer.name
         return final_df

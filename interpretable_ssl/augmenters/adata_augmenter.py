@@ -451,13 +451,13 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             augmented_expression = original_expression + noise
 
             # Ensure no negative values (counts cannot be negative)
-            augmented_expression = np.maximum(augmented_expression, 0)
+            augmented_expression = np.maximum(augmented_expression, 0).flatten()
 
             # Replace the "x" key in the original data with the augmented expression
             augmented_data = original_data.copy()
             augmented_data["x"] = torch.tensor(
                 augmented_expression, dtype=torch.float32
-            )
+            ).view(-1)  # Ensure it's a 1D tensor
 
             augmented_data_list.append(augmented_data)
 
@@ -466,6 +466,12 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
     def mask_augment(self, index):
         """
         Augment the data by masking a portion of the original expression values.
+
+        Parameters:
+            index: Index of the data point to augment.
+
+        Returns:
+            Tensor of augmented data points with shape (n_augmentations, n_features).
         """
         # Call the superclass's __getitem__ method to get the original data
         original_data = super().__getitem__(index)
@@ -474,6 +480,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         )  # Convert to numpy array
 
         augmented_data_list = []
+
         for _ in range(self.n_augmentations):
             # Generate a random mask based on the mask_probability
             mask = np.random.rand(original_expression.shape[0]) < self.mask_probability
@@ -486,11 +493,12 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             augmented_data = original_data.copy()
             augmented_data["x"] = torch.tensor(
                 augmented_expression, dtype=torch.float32
-            )
+            ).view(-1)  # Ensure it's a 1D tensor
 
             augmented_data_list.append(augmented_data)
 
         return augmented_data_list
+
 
     def augment_on_the_fly(self, index):
         """Augment a single cell by sampling from the same cell type, performing a random walk on the kNN graph, or adding negative binomial noise."""

@@ -539,3 +539,65 @@ def plot_3umaps2(
             )  # Increase pad_inches as needed
 
     return fig
+
+
+import matplotlib.pyplot as plt
+
+def plot_f1_scores_per_class(f1_scores_dict, class_names):
+    """
+    Plots a grouped bar plot of F1 scores per class for multiple splits, with values displayed on top of the bars.
+
+    Parameters:
+    - f1_scores_dict: Dictionary where keys are split names (e.g., 'Train', 'Validation', 'Test')
+      and values are lists of per-class F1 scores.
+      Example: {
+          'Train': [0.8, 0.7, 0.9],
+          'Validation': [0.75, 0.65, 0.85],
+          'Test': [0.78, 0.68, 0.88]
+      }
+    - class_names: List of class names corresponding to the F1 scores.
+    """
+    # Number of classes and splits
+    num_classes = len(class_names)
+    num_splits = len(f1_scores_dict)
+    bar_width = 0.25
+    indices = range(num_classes)
+
+    # Create the plot
+    plt.figure(figsize=(12, 6))
+    for i, (split_name, f1_scores) in enumerate(f1_scores_dict.items()):
+        bar_positions = [x + i * bar_width for x in indices]
+        bars = plt.bar(
+            bar_positions,
+            f1_scores,
+            width=bar_width,
+            label=split_name,
+        )
+
+        # Add values on top of the bars
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(
+                bar.get_x() + bar.get_width() / 2,
+                height,
+                f"{height:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+            )
+
+    # Formatting
+    plt.xticks(
+        [x + bar_width * (num_splits / 2 - 0.5) for x in indices],
+        class_names,
+        rotation=45,
+        ha="right",
+    )
+    plt.xlabel("Class Names")
+    plt.ylabel("F1 Score")
+    plt.title("F1 Score comparison")
+    plt.legend()
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+    plt.tight_layout()
+    plt.show()
+

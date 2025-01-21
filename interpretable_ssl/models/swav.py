@@ -243,18 +243,13 @@ class SwavBase(nn.Module):
         reconstructed_input = torch.exp(recon_x) - 1
         return reconstructed_input
 
-    def decode_and_average(self, recon_loss="nb", use_avg_batch_embedding=False, use_batch=None):
-        print('new decode')
-        """
-        Decode the input tensor with all possible batch embeddings, then average the results.
-        Args:
-            input_tensor (torch.Tensor): Input tensor to decode, shape (batch_size, input_dim).
-        Returns:
-            Averaged decoded tensor of shape (batch_size, output_dim).
-        """
-        # Move input tensor to GPU
-        input_tensor = self.get_prototypes()
-
+    def decode(
+        self,
+        input_tensor,
+        recon_loss="nb",
+        use_avg_batch_embedding=False,
+        use_batch=None,
+    ):
         # Get all possible embeddings
         batch_embeddings = (
             self.get_all_batch_embeddings()
@@ -264,9 +259,9 @@ class SwavBase(nn.Module):
             # Average all embeddings
             avg_embedding = batch_embeddings.mean(dim=0)
             batch_embeddings = [avg_embedding]
-        
+
         if use_batch is not None:
-            batch_embeddings = [batch_embeddings[use_batch]]    
+            batch_embeddings = [batch_embeddings[use_batch]]
         # Decode input tensor with each embedding and average results
         decoded_results = []
         for i, batch_embedding in enumerate(batch_embeddings):
@@ -286,6 +281,21 @@ class SwavBase(nn.Module):
 
         # Stack all decoded results and average along the "embedding" dimension
         return torch.stack(decoded_results, dim=0).mean(dim=0)
+
+    def decode_proto(
+        self, recon_loss="nb", use_avg_batch_embedding=False, use_batch=None
+    ):
+        print("new decode")
+        """
+        Decode the input tensor with all possible batch embeddings, then average the results.
+        Args:
+            input_tensor (torch.Tensor): Input tensor to decode, shape (batch_size, input_dim).
+        Returns:
+            Averaged decoded tensor of shape (batch_size, output_dim).
+        """
+        # Move input tensor to GPU
+        input_tensor = self.get_prototypes()
+        return self.decode(input_tensor, recon_loss, use_avg_batch_embedding, use_batch)
 
 
 class SwAVModel(SwavBase):
