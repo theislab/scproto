@@ -39,6 +39,8 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         knn_method="faiss",
         ds_name="hlca",
         save_dir=None,
+        mask_probability=0.2,
+        default_dispersion = 0.1,
         **kwargs,
     ):
         """
@@ -85,6 +87,18 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         self.save_path = os.path.join(save_dir, self.graph_name)
         if self.augmentation_type not in ["cell_type", "nb"]:
             self.set_graph()
+        self.mask_probability = mask_probability
+        
+        self.default_dispersion = default_dispersion
+
+        # Calculate mean expression and default dispersion from the data
+        self.mean_expression = np.mean(self.adata.X, axis=0).flatten()
+        self.dispersion = (
+            1 / self.adata.varm["overdispersion"]
+            if "overdispersion" in self.adata.varm
+            else np.full(self.mean_expression.shape, self.default_dispersion)
+        )
+                
         super().__init__(adata, **kwargs)
 
     def get_random_indices(self, n, specific_index):
@@ -411,6 +425,12 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
     def negative_binomial_augment(self, index):
         """
         Augment the data by adding negative binomial noise to the original expression values.
+
+        Parameters:
+            index: Index of the data point to augment.
+
+        Returns:
+            List of augmented data points.
         """
         # Call the superclass's __getitem__ method to get the original data
         original_data = super().__getitem__(index)
@@ -418,16 +438,13 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
             original_data["x"].numpy().flatten()
         )  # Convert to numpy array
 
-        # Estimate mean and dispersion (overdispersion parameter) for the distribution
-        mean_expression = original_expression
-        dispersion = (
-            1 / self.adata.varm["overdispersion"]
-            if "overdispersion" in self.adata.varm
-            else np.ones_like(mean_expression)
-        )
+        # Retrieve precomputed mean and dispersion
+        mean_expression = self.mean_expression
+        dispersion = self.dispersion
 
         augmented_data_list = []
         for _ in range(self.n_augmentations):
+            # Calculate noise using the negative binomial distribution
             noise = np.random.negative_binomial(
                 n=dispersion, p=mean_expression / (mean_expression + dispersion)
             )
@@ -446,18 +463,20 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
         return augmented_data_list
 
-    def mask_augment(self, index, mask_probability=0.2):
+    def mask_augment(self, index):
         """
         Augment the data by masking a portion of the original expression values.
         """
         # Call the superclass's __getitem__ method to get the original data
         original_data = super().__getitem__(index)
-        original_expression = original_data["x"].numpy().flatten()  # Convert to numpy array
+        original_expression = (
+            original_data["x"].numpy().flatten()
+        )  # Convert to numpy array
 
         augmented_data_list = []
         for _ in range(self.n_augmentations):
             # Generate a random mask based on the mask_probability
-            mask = np.random.rand(original_expression.shape[0]) < mask_probability
+            mask = np.random.rand(original_expression.shape[0]) < self.mask_probability
 
             # Apply the mask: set values to 0 where the mask is True
             augmented_expression = original_expression.copy()
@@ -465,12 +484,13 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
 
             # Replace the "x" key in the original data with the augmented expression
             augmented_data = original_data.copy()
-            augmented_data["x"] = torch.tensor(augmented_expression, dtype=torch.float32)
+            augmented_data["x"] = torch.tensor(
+                augmented_expression, dtype=torch.float32
+            )
 
             augmented_data_list.append(augmented_data)
 
         return augmented_data_list
-
 
     def augment_on_the_fly(self, index):
         """Augment a single cell by sampling from the same cell type, performing a random walk on the kNN graph, or adding negative binomial noise."""
