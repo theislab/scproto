@@ -176,6 +176,8 @@ class ScpoliTrainer(Trainer):
         pass
 
     def plot_umap(self, model, adata, split, save_plot=True):
+        if self.save_umaps == 0:
+            return
         latent = self.encode_adata(adata, model)
         prototypes = self.get_model_prototypes(model)
         latent_umap, prototype_umap = calculate_umap(latent, prototypes)
