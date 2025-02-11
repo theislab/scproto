@@ -47,7 +47,7 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
     bm = Benchmarker(
     adata,  # Your AnnData object
     batch_key="study",  # Replace with the correct batch annotation column
-    label_key="final_annotation",  # Replace with the correct cell type annotation column
+    label_key="cell_type",  # Replace with the correct cell type annotation column
     embedding_obsm_keys=keys   # Use PCA embedding for metrics
     )
 
@@ -65,7 +65,7 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
     scgraph = scGraph(
         adata_path=adata_tmp_path,
         batch_key="study",
-        label_key="final_annotation",
+        label_key="cell_type",
         hvg=False,
         trim_rate=0.05,
         thres_batch=100,
@@ -79,7 +79,7 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
     # save all
     return pd.concat([scib_results, f1, scgraph_results], axis=1)
 
-def evaluate_multiple_embeddings(ref, query, keys, label_key="final_annotation"):
+def evaluate_multiple_embeddings(ref, query, keys, label_key="cell_type"):
     cd_cells = ['CD4+ T cells', 'CD8+ T cells']
     nk = ['NK cells', 'CD8+ T cells']
     all_cells = ref.obs[label_key].unique()
@@ -97,7 +97,7 @@ def evaluate_multiple_embeddings(ref, query, keys, label_key="final_annotation")
 
     return pd.DataFrame(results)
 
-def train_and_evaluate_classifier(adata_ref, adata_query, cell_types, key="X_pca", label_key="final_annotation"):
+def train_and_evaluate_classifier(adata_ref, adata_query, cell_types, key="X_pca", label_key="cell_type"):
     adata_ref_filtered = adata_ref[adata_ref.obs[label_key].isin(cell_types)].copy()
     adata_query_filtered = adata_query[adata_query.obs[label_key].isin(cell_types)].copy()
 
