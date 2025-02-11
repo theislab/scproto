@@ -11,7 +11,7 @@ import random
 from torch.utils.data import get_worker_info
 from interpretable_ssl.augmenters.graph_handler import GraphHandler
 import scipy.sparse as sp
-import bbknn
+
 import faiss
 import os
 import pickle as pkl
@@ -243,27 +243,18 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         Build the k-nearest neighbors graph using Scanpy.
         """
         logger.info(f"Running Scanpy neighbors with k={self.k_neighbors + 1}.")
-        if self.use_bknn:
-            logger.info("print generating bknn graph")
-            num_batches = self.adata.obs["study"].nunique()
-            neighbors_within_batch = int(self.k_neighbors / num_batches)
-            bbknn.bbknn(
-                self.adata,
-                batch_key="study",
-                neighbors_within_batch=neighbors_within_batch,
-            )
-        else:
-            sc.pp.neighbors(
-                self.adata,
-                n_neighbors=self.k_neighbors + 1,
-                metric=self.knn_similarity,
-                # method='faiss',
-                use_rep=(
-                    f"X_{self.dimensionality_reduction}"
-                    if self.need_dim_reduction()
-                    else None
-                ),
-            )
+
+        sc.pp.neighbors(
+            self.adata,
+            n_neighbors=self.k_neighbors + 1,
+            metric=self.knn_similarity,
+            # method='faiss',
+            use_rep=(
+                f"X_{self.dimensionality_reduction}"
+                if self.need_dim_reduction()
+                else None
+            ),
+        )
 
         # # Retrieve the adjacency matrix (kNN graph) created by Scanpy
         # adjacency_matrix = self.adata.obsp["connectivities"]

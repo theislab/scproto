@@ -1,8 +1,8 @@
 from interpretable_ssl.datasets.dataset import SingleCellDataset
-
+from constants import HOME
 
 def get_label_encoder_path():
-    return "./data/hlca_label_encoder.pkl"
+    return f"{HOME}/data/hlca_label_encoder.pkl"
 
 
 class HLCADataset(SingleCellDataset):
@@ -12,7 +12,7 @@ class HLCADataset(SingleCellDataset):
         self.adata.obs["batch"] = self.adata.obs["study"]
 
     def get_data_path(self):
-        return "/home/icb/fatemehs.hashemig/data/hlca/hlca_core_hvg.h5ad"
+        return f"{HOME}/data/hlca/hlca_core_hvg.h5ad"
 
     def get_test_studies(self):
         return ["Teichmann_Meyer_2019", "Lafyatis_Rojas_2019"]

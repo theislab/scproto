@@ -7,8 +7,8 @@ from interpretable_ssl.models.linear import *
 from interpretable_ssl.evaluation.knn import *
 
 import sys
-
-sys.path.append("/home/icb/fatemehs.hashemig/Islander/src")
+from constants import HOME
+sys.path.append(f"{HOME}/codes/Islander/src")
 from scGraph import *
 import os
 

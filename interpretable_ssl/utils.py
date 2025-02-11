@@ -3,7 +3,7 @@ from sklearn.preprocessing import LabelEncoder
 import pickle as pkl
 from torch.utils.data import random_split
 import scanpy as sc
-
+from constants import HOME
 
 import time
 import logging
@@ -42,7 +42,7 @@ def get_device():
 
 
 def get_home():
-    return "/home/icb/fatemehs.hashemig/"
+    return HOME
 
 
 def save_model_checkpoint(model, epoch, save_path):

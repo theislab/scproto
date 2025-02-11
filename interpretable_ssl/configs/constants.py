@@ -1,1 +1,2 @@
-MODEL_DIR = "/home/icb/fatemehs.hashemig/models/"
+from constants import HOME
+MODEL_DIR = f"{HOME}/models/"
