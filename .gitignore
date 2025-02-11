@@ -13,6 +13,6 @@ my_shinyapp
 slurm-job-out*
 temp-res*
 tmp_data
-swav
+
 graphs
 runs/sbatch_files/auto_generated

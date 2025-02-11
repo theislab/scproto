@@ -10,8 +10,8 @@ import torch
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import torch.optim
-import apex
-from apex.parallel.LARC import LARC
+# import apex
+# from apex.parallel.LARC import LARC
 
 from swav.src.utils import (
     bool_flag,
@@ -239,13 +239,13 @@ class SwAV(AdoptiveTrainer):
         logger.info("Building optimizer done.")
 
     def init_mixed_precision(self):
-        if self.use_fp16:
-            self.model, self.optimizer = apex.amp.initialize(
-                self.model, self.optimizer, opt_level="O1"
-            )
-            logger.info("Initializing mixed precision done.")
-        else:
-            logger.info("no mixed precision")
+        # if self.use_fp16:
+        #     self.model, self.optimizer = apex.amp.initialize(
+        #         self.model, self.optimizer, opt_level="O1"
+        #     )
+        #     logger.info("Initializing mixed precision done.")
+        # else:
+        logger.info("no mixed precision")
 
     def load_checkpoint(self):
         to_restore = {"epoch": 0}
@@ -254,7 +254,7 @@ class SwAV(AdoptiveTrainer):
             run_variables=to_restore,
             state_dict=self.model,
             optimizer=self.optimizer,
-            amp=apex.amp,
+            # amp=apex.amp,
         )
         self.start_epoch = to_restore["epoch"]
 
@@ -275,8 +275,8 @@ class SwAV(AdoptiveTrainer):
             "state_dict": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
         }
-        if self.use_fp16:
-            save_dict["amp"] = apex.amp.state_dict()
+        # if self.use_fp16:
+        #     save_dict["amp"] = apex.amp.state_dict()
 
         checkpoint_file = self.get_checkpoint_file()
         torch.save(save_dict, os.path.join(self.dump_path, checkpoint_file))
@@ -655,11 +655,11 @@ class SwAV(AdoptiveTrainer):
             )
             self.optimizer.zero_grad()
 
-            if self.use_fp16:
-                with apex.amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
+            # if self.use_fp16:
+            #     with apex.amp.scale_loss(loss, self.optimizer) as scaled_loss:
+            #         scaled_loss.backward()
+            # else:
+            loss.backward()
 
             if self.freeze_prototypes_nepochs > 0:
                 if epoch < self.freeze_prototypes_nepochs:
@@ -944,13 +944,13 @@ class SwAV(AdoptiveTrainer):
                 _, _, _, cvae_loss, _ = self.model(inputs)  # Modify as needed
                 decoder_optimizer.zero_grad()
 
-                if self.use_fp16:
-                    with apex.amp.scale_loss(
-                        cvae_loss, decoder_optimizer
-                    ) as scaled_loss:
-                        scaled_loss.backward()
-                else:
-                    cvae_loss.backward()
+                # if self.use_fp16:
+                #     with apex.amp.scale_loss(
+                #         cvae_loss, decoder_optimizer
+                #     ) as scaled_loss:
+                #         scaled_loss.backward()
+                # else:
+                cvae_loss.backward()
 
                 decoder_optimizer.step()
                 cvae_losses.update(cvae_loss.item(), inputs["x"].size(0))
