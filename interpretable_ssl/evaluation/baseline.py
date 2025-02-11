@@ -11,48 +11,51 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 
-def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_epochs=5, n_latent=8):
-    # claculate pca
-    sc.pp.pca(adata, n_comps=50)
+def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_epochs=5, n_latent=8, keys=["X_pca", "X_scvi"]):
+
+    if 'X_pca' in keys:
+        # claculate pca
+        sc.pp.pca(adata, n_comps=50)
 
     # split to ref and query
     query_idx = adata.obs.study.isin(test_studies)
     ref = adata[~query_idx].copy()
     query = adata[query_idx].copy()
 
-    # calculate scvi
-    # Step 2: Train scVI model and compute embeddings
-    scvi.model.SCVI.setup_anndata(ref, batch_key="study")  # Change "batch" to your batch column
-    model = scvi.model.SCVI(ref, n_latent=n_latent)
-    model.train(ref_epochs)
+    if 'X_scvi' in keys:
+        # calculate scvi
+        # Step 2: Train scVI model and compute embeddings
+        scvi.model.SCVI.setup_anndata(ref, batch_key="study")  # Change "batch" to your batch column
+        model = scvi.model.SCVI(ref, n_latent=n_latent)
+        model.train(ref_epochs)
 
-    model_dir = f'{name}-scvi'
-    # Step 2: Save the Trained Model
-    os.makedirs(model_dir, exist_ok=True)  # Ensure directory exists
-    model.save(model_dir, overwrite=True)
+        model_dir = f'{name}-scvi'
+        # Step 2: Save the Trained Model
+        os.makedirs(model_dir, exist_ok=True)  # Ensure directory exists
+        model.save(model_dir, overwrite=True)
 
-    scvi.model.SCVI.prepare_query_anndata(query, model)
-    scvi_query = scvi.model.SCVI.load_query_data(
-        query,
-        model,
-    )
-    scvi_query.train(max_epochs=query_epochs, plan_kwargs={"weight_decay": 0.0})
-    # Get scVI latent representation
-    adata.obsm["X_scvi"] = scvi_query.get_latent_representation(adata)
+        scvi.model.SCVI.prepare_query_anndata(query, model)
+        scvi_query = scvi.model.SCVI.load_query_data(
+            query,
+            model,
+        )
+        scvi_query.train(max_epochs=query_epochs, plan_kwargs={"weight_decay": 0.0})
+        # Get scVI latent representation
+        adata.obsm["X_scvi"] = scvi_query.get_latent_representation(adata)
 
     # scib metrics
     bm = Benchmarker(
     adata,  # Your AnnData object
     batch_key="study",  # Replace with the correct batch annotation column
     label_key="final_annotation",  # Replace with the correct cell type annotation column
-    embedding_obsm_keys=["X_pca", "X_scvi"]   # Use PCA embedding for metrics
+    embedding_obsm_keys=keys   # Use PCA embedding for metrics
     )
 
     # Run the benchmark to compute scib-metrics
     bm.benchmark()
 
     # Get the results
-    scib_results = bm.get_results()
+    scib_results = bm.get_results(min_max_scale=False)
     scib_results = scib_results.iloc[:-1]
 
     # scgraph metrics
@@ -68,10 +71,10 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
         thres_batch=100,
         thres_celltype=10,
     )
-    scgraph_results = scgraph.main(_obsm_list=["X_pca", "X_scvi"])
+    scgraph_results = scgraph.main(_obsm_list=keys)
 
     # classification
-    f1 = evaluate_multiple_embeddings(ref, query, ['X_pca', 'X_scvi']).T
+    f1 = evaluate_multiple_embeddings(ref, query, keys).T
 
     # save all
     return pd.concat([scib_results, f1, scgraph_results], axis=1)
