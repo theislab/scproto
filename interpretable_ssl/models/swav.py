@@ -105,9 +105,6 @@ class SwavBase(nn.Module):
     def prototype_decoding_loss(self, z):
         return self.propagation(z), self.embedding_similarity(z)
 
-    def set_scpoli_encoder(self, scpoli_encoder):
-        self.scpoli_encoder = scpoli_encoder
-
     def encode(self, batch):
         encoder_out, x, x_mapped, _, _ = self.forward(batch)
         return encoder_out, x, x_mapped
@@ -324,6 +321,9 @@ class SwAVModel(SwavBase):
             recon_loss=recon_loss,
         )
 
+    def set_scpoli_encoder(self, scpoli_):
+        self.scpoli_ = scpoli_
+        self.scpoli_encoder = scpoli_.model
 
 class SwAVDecodableProto(SwAVModel):
 

@@ -98,7 +98,7 @@ class ScpoliTrainer(Trainer):
             scpoli_query.train(n_epochs=retrain_epochs, 
                               pretraining_epochs=retrain_epochs)
             
-        query_model.set_scpoli_encoder(scpoli_query.model)
+        query_model.set_scpoli_encoder(scpoli_query)
         query_model.to(self.device)
         return query_model
 
