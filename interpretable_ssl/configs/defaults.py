@@ -49,8 +49,8 @@ def get_defaults():
         "rank": 0,  # swav specific
         "local_rank": 0,  # swav specific
         "workers": 10,  # swav specific
-        "checkpoint_freq": 3,  # swav specific
-        "umap_checkpoint_freq": 3,
+        "checkpoint_freq": 100,  # swav specific
+        "umap_checkpoint_freq": 100,
         "scib_freq": 10, 
         "save_scib": 1,
         "use_fp16": False,  # swav specific
