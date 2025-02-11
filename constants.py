@@ -67,4 +67,4 @@ ABBREVIATIONS = {
     "recon_loss": 'recon',
     "no_sinkhorn": 'nosink',
 }
-HOME = '/home/icb/fatemehs.hashemig/'
+HOME = '/content/drive/MyDrive/'
