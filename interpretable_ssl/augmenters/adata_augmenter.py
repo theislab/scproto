@@ -534,7 +534,7 @@ class MultiCropsDataset(MultiConditionAnnotatedDataset):
         else:
             # Fetch the augmented data using the parent's __getitem__ method
             augmented_data_list = [
-                super().__getitem__(aug_idx) for aug_idx in augmented_data_list
+                super(type(self), self).__getitem__(aug_idx) for aug_idx in augmented_data_list
             ]
             combined_data = self.combine_augmented_data(augmented_data_list)
 

@@ -12,7 +12,7 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 # import apex
 # from apex.parallel.LARC import LARC
-
+from torchlars import LARS
 from swav.src.utils import (
     bool_flag,
     initialize_exp,
@@ -202,8 +202,8 @@ class SwAV(AdoptiveTrainer):
             momentum=0.9,
             weight_decay=self.wd,
         )
-        self.optimizer = LARC(
-            optimizer=self.optimizer, trust_coefficient=0.001, clip=False
+        self.optimizer = LARS(
+            optimizer=self.optimizer
         )
 
         warmup_lr_schedule = np.linspace(
