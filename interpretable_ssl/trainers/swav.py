@@ -72,7 +72,7 @@ class SwAV(AdoptiveTrainer):
 
         self.build_optimizer()
         self.init_mixed_precision()
-        self.load_checkpoint()
+        # self.load_checkpoint()
 
     def build_data(self):
 

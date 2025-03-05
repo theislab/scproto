@@ -6,7 +6,8 @@ import interpretable_ssl.utils as utils
 import pickle as pkl
 import inspect
 from interpretable_ssl.utils import log_time
-
+import os
+from sklearn.preprocessing import LabelEncoder
 
 class SingleCellDataset(Dataset):
 
@@ -18,7 +19,7 @@ class SingleCellDataset(Dataset):
         else:
             self.adata = adata
         self.label_encoder_path = label_encoder_path
-        self.le = self.load_label_encoder()
+        self.le = self.get_le()
 
         self.num_classes = len(set(self.adata.obs["cell_type"].cat.categories))
         self.x_dim = self.adata[0].X.shape[1]
@@ -46,9 +47,6 @@ class SingleCellDataset(Dataset):
         data = sc.read_h5ad(data_path)
         print('done')
         return data
-
-    def load_label_encoder(self):
-        return pkl.load(open(self.label_encoder_path, "rb"))
 
     def __len__(self):
         return len(self.adata)
@@ -110,3 +108,14 @@ class SingleCellDataset(Dataset):
 
     def get_test_studies(self):
         pass
+
+    def get_le(self):
+        if not os.path.exists(self.label_encoder_path):
+            print('fitting label encoder...')
+            le = LabelEncoder()
+            le.fit_transform(self.adata.obs["cell_type"])
+            os.makedirs(os.path.dirname(self.label_encoder_path), exist_ok=True)
+            pkl.dump(le, open(self.label_encoder_path, 'wb'))
+            return le
+        else:
+            return pkl.load(open(self.label_encoder_path, 'rb'))
