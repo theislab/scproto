@@ -100,7 +100,8 @@ def evaluate_multiple_embeddings(ref, query, keys, label_key="cell_type"):
 def train_and_evaluate_classifier(adata_ref, adata_query, cell_types, key="X_pca", label_key="cell_type"):
     adata_ref_filtered = adata_ref[adata_ref.obs[label_key].isin(cell_types)].copy()
     adata_query_filtered = adata_query[adata_query.obs[label_key].isin(cell_types)].copy()
-
+    if (len(adata_ref_filtered) == 0) or (len(adata_query_filtered) == 0):
+        return None
     X_train = adata_ref_filtered.obsm[key]
     y_train = adata_ref_filtered.obs[label_key].values
 
