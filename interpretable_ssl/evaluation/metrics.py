@@ -2,18 +2,22 @@ import torch
 import numpy as np
 import pandas as pd
 from copy import deepcopy
-from scib_metrics.benchmark import Benchmarker
+from scib_metrics.benchmark import Benchmarker, BioConservation, BatchCorrection
 from interpretable_ssl.models.linear import *
 from interpretable_ssl.evaluation.knn import *
 
 import sys
 from constants import HOME
+
 sys.path.append(f"{HOME}/codes/Islander/src")
 from scGraph import *
 import os
 
+
 class MetricCalculator:
-    def __init__(self, input_adata, latents, dump_path, keys=["latent"], save_path=None) -> None:
+    def __init__(
+        self, input_adata, latents, dump_path, keys=["latent"], save_path=None
+    ) -> None:
 
         self.batch_key = "batch"
         self.label_key = "cell_type"
@@ -56,7 +60,7 @@ class MetricCalculator:
 
         # Filter adata to keep only cells with valid cell types
         adata_filtered = adata[adata.obs[self.label_key].isin(valid_celltypes)].copy()
-        
+
         return adata_filtered
 
     def calculate_scib(self):
@@ -66,6 +70,8 @@ class MetricCalculator:
             batch_key=self.batch_key,
             label_key=self.label_key,
             embedding_obsm_keys=self.keys,
+            bio_conservation_metrics=BioConservation(),
+            batch_correction_metrics=BatchCorrection(),
         )
 
         # Perform the benchmark
@@ -80,7 +86,7 @@ class MetricCalculator:
                 print(col, adata.obs[col].cat.categories.duplicated().sum())
 
     def calculate_scgraph(self):
-        
+
         adata_tmp_path = os.path.join(self.dump_path, "adata_tmp.h5ad")
         self.check_duplicate_category_adata(self.adata)
         self.adata.write(adata_tmp_path)
@@ -114,7 +120,7 @@ class MetricCalculator:
             classifier.train()
             df, _ = classifier.evaluate()
 
-            return self.extract_f1_score(df, key, 'linear classifier f1')
+            return self.extract_f1_score(df, key, "linear classifier f1")
 
         return self.get_results(get_linear_results)
 
@@ -131,11 +137,11 @@ class MetricCalculator:
         # ]
 
         score_list = []
-        
+
         for key in self.keys:
             emb = self.adata.obsm[key]
             score_list.append(get_res_func(emb, key))
-            
+
         # Create a DataFrame from the list of F1 scores
         result_df = pd.DataFrame(score_list)
 
@@ -168,7 +174,11 @@ class MetricCalculator:
 
 
 def calculate_scib_metrics_using_benchmarker(
-    input_adata, latent, save_path=None, batch_key="batch", label_key="cell_type"
+    input_adata,
+    latent,
+    save_path=None,
+    batch_key="batch",
+    label_key="cell_type",
 ):
     # Convert the latent tensor to a numpy array if it's a PyTorch tensor
     if isinstance(latent, torch.Tensor):
@@ -187,6 +197,8 @@ def calculate_scib_metrics_using_benchmarker(
         label_key=label_key,
         embedding_obsm_keys=["latent"],
         n_jobs=-1,  # Adjust the number of jobs according to your system
+        bio_conservation_metrics=BioConservation(),
+        batch_correction_metrics=BatchCorrection(),
     )
 
     # Perform the benchmark

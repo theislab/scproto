@@ -1,9 +1,10 @@
 import scanpy as sc
-from scib_metrics.benchmark import Benchmarker
+from scib_metrics.benchmark import Benchmarker, BioConservation, BatchCorrection
 import scvi
 import pandas as pd
 import os
 import sys
+
 sys.path.append("/content/drive/MyDrive/codes/Islander/src")
 from scGraph import *
 
@@ -11,9 +12,18 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 
-def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_epochs=5, n_latent=8, keys=["X_pca", "X_scvi"]):
 
-    if 'X_pca' in keys:
+def calculate_baseline_metrics(
+    adata,
+    name,
+    test_studies,
+    ref_epochs=200,
+    query_epochs=5,
+    n_latent=8,
+    keys=["X_pca", "X_scvi"],
+):
+
+    if "X_pca" in keys:
         # claculate pca
         sc.pp.pca(adata, n_comps=50)
 
@@ -22,14 +32,16 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
     ref = adata[~query_idx].copy()
     query = adata[query_idx].copy()
 
-    if 'X_scvi' in keys:
+    if "X_scvi" in keys:
         # calculate scvi
         # Step 2: Train scVI model and compute embeddings
-        scvi.model.SCVI.setup_anndata(ref, batch_key="study")  # Change "batch" to your batch column
+        scvi.model.SCVI.setup_anndata(
+            ref, batch_key="study"
+        )  # Change "batch" to your batch column
         model = scvi.model.SCVI(ref, n_latent=n_latent)
         model.train(ref_epochs)
 
-        model_dir = f'{name}-scvi'
+        model_dir = f"{name}-scvi"
         # Step 2: Save the Trained Model
         os.makedirs(model_dir, exist_ok=True)  # Ensure directory exists
         model.save(model_dir, overwrite=True)
@@ -45,10 +57,12 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
 
     # scib metrics
     bm = Benchmarker(
-    adata,  # Your AnnData object
-    batch_key="study",  # Replace with the correct batch annotation column
-    label_key="cell_type",  # Replace with the correct cell type annotation column
-    embedding_obsm_keys=keys   # Use PCA embedding for metrics
+        adata,  # Your AnnData object
+        batch_key="study",  # Replace with the correct batch annotation column
+        label_key="cell_type",  # Replace with the correct cell type annotation column
+        embedding_obsm_keys=keys,  # Use PCA embedding for metrics
+        bio_conservation_metrics=BioConservation(),
+        batch_correction_metrics=BatchCorrection(),
     )
 
     # Run the benchmark to compute scib-metrics
@@ -79,9 +93,10 @@ def calculate_baseline_metrics(adata, name, test_studies, ref_epochs=200, query_
     # save all
     return pd.concat([scib_results, f1, scgraph_results], axis=1)
 
+
 def evaluate_multiple_embeddings(ref, query, keys, label_key="cell_type"):
-    cd_cells = ['CD4+ T cells', 'CD8+ T cells']
-    nk = ['NK cells', 'CD8+ T cells']
+    cd_cells = ["CD4+ T cells", "CD8+ T cells"]
+    nk = ["NK cells", "CD8+ T cells"]
     all_cells = ref.obs[label_key].unique()
 
     results = {}
@@ -89,17 +104,28 @@ def evaluate_multiple_embeddings(ref, query, keys, label_key="cell_type"):
     for key in keys:
         print(f"Evaluating key: {key}")
 
-        f1_cd = train_and_evaluate_classifier(ref, query, cd_cells, key=key, label_key=label_key)
-        f1_nk = train_and_evaluate_classifier(ref, query, nk, key=key, label_key=label_key)
-        f1_all = train_and_evaluate_classifier(ref, query, all_cells, key=key, label_key=label_key)
+        f1_cd = train_and_evaluate_classifier(
+            ref, query, cd_cells, key=key, label_key=label_key
+        )
+        f1_nk = train_and_evaluate_classifier(
+            ref, query, nk, key=key, label_key=label_key
+        )
+        f1_all = train_and_evaluate_classifier(
+            ref, query, all_cells, key=key, label_key=label_key
+        )
 
         results[key] = {"cd_cells": f1_cd, "nk": f1_nk, "all": f1_all}
 
     return pd.DataFrame(results)
 
-def train_and_evaluate_classifier(adata_ref, adata_query, cell_types, key="X_pca", label_key="cell_type"):
+
+def train_and_evaluate_classifier(
+    adata_ref, adata_query, cell_types, key="X_pca", label_key="cell_type"
+):
     adata_ref_filtered = adata_ref[adata_ref.obs[label_key].isin(cell_types)].copy()
-    adata_query_filtered = adata_query[adata_query.obs[label_key].isin(cell_types)].copy()
+    adata_query_filtered = adata_query[
+        adata_query.obs[label_key].isin(cell_types)
+    ].copy()
     if (len(adata_ref_filtered) == 0) or (len(adata_query_filtered) == 0):
         return None
     X_train = adata_ref_filtered.obsm[key]
@@ -121,5 +147,5 @@ def train_and_evaluate_classifier(adata_ref, adata_query, cell_types, key="X_pca
     f1 = f1_score(y_test_encoded, y_pred, average="macro")
 
     print(f"F1 Score: {f1:.4f}")
-    
+
     return f1
